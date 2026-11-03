@@ -1,18 +1,18 @@
 model_settings:
   llm:
     model: qwen3.7-plus
-    api_key: sk-fbee31ca6c704c48bbf9efa0cfa8c25a
+    api_key: 
     base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
   embedding:
     model: text-embedding-v4
-    api_key: sk-fbee31ca6c704c48bbf9efa0cfa8c25a
+    api_key: 
     base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
   rerank:
     model: qwen3-rerank
-    api_key: sk-fbee31ca6c704c48bbf9efa0cfa8c25a
+    api_key: 
     base_url: https://dashscope.aliyuncs.com/compatible-api/v1/reranks
 milvus_settings:
-  host: 210.51.27.16
+  host: 
   port: 19530
   db_name: ai_platform
   collection_name: user
@@ -23,10 +23,10 @@ milvus_settings:
 database_settings:
   db_type: mysql
   mysql:
-    host: 172.16.100.180
+    host: 
     port: 3306
     user: root
-    password: fijo123456
+    password: 
     db: ai_platform 
     minsize: 1
     maxsize: 10
@@ -35,5 +35,5 @@ database_settings:
 # 说明：kernel_id 不再写死配置，运行时先查询沙箱 /api/kernels：
 #       有可用内核则取第一个的 id，没有则自动创建，详见 tableAgent/agent.py 的 resolve_kernel_id。
 sandbox:
-  url: "http://172.16.100.223:7080"
-  token: "kaifatokenceshi1234"
+  url: "http://沙箱地址:7080"
+  token: "token"
