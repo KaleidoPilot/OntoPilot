@@ -329,10 +329,6 @@ location /fijoAi/ {
 }
 ```
 
-## 发布到 GitHub 前请先处理
-
-仓库里这几个文件带着真实密钥和账号信息，**不要提交**：
-
 - `config.yaml`：模型 API Key、MySQL 账号密码、Milvus 地址、沙箱令牌
 - `.env.prod`：生产环境配置
 - `.personal-mcp.key`：MCP 密钥
