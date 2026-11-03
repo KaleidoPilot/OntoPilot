@@ -1,0 +1,206 @@
+model_config:
+  count: |
+    SELECT COUNT(*) AS total
+    FROM MODEL_CONFIG
+    WHERE REMOVED = 0
+      AND ORG_ID = :orgId
+      AND (:model IS NULL OR MODEL LIKE CONCAT('%', :model, '%'))
+      AND (:type IS NULL OR TYPE = :type)
+      AND (:enabled IS NULL OR ENABLED = :enabled)
+
+  list: |
+    SELECT
+      ID AS id,
+      MODEL AS model,
+      BASE_URL AS baseUrl,
+      TYPE AS type,
+      ENABLED AS enabled,
+      CASE WHEN API_KEY <> '' THEN 1 ELSE 0 END AS hasApiKey,
+      CREATE_USER_NAME AS createUserName,
+      CREATE_TIME AS createTime,
+      UPDATE_USER_NAME AS updateUserName,
+      UPDATE_TIME AS updateTime
+    FROM MODEL_CONFIG
+    WHERE REMOVED = 0
+      AND ORG_ID = :orgId
+      AND (:model IS NULL OR MODEL LIKE CONCAT('%', :model, '%'))
+      AND (:type IS NULL OR TYPE = :type)
+      AND (:enabled IS NULL OR ENABLED = :enabled)
+    ORDER BY ID DESC
+    LIMIT :limit OFFSET :offset
+
+  find_by_id: |
+    SELECT ID AS id
+    FROM MODEL_CONFIG
+    WHERE ID = :id AND ORG_ID = :orgId AND REMOVED = 0
+
+  insert: |
+    INSERT INTO MODEL_CONFIG (
+      ORG_ID,
+      MODEL,
+      API_KEY,
+      BASE_URL,
+      TYPE,
+      ENABLED,
+      REMOVED,
+      CREATE_USER_ID,
+      CREATE_USER_NAME,
+      CREATE_TIME
+    ) VALUES (
+      :orgId,
+      :model,
+      :apiKey,
+      :baseUrl,
+      :type,
+      :enabled,
+      0,
+      :createUserId,
+      :createUserName,
+      :createTime
+    )
+
+  update: |
+    UPDATE MODEL_CONFIG
+    SET MODEL = COALESCE(:model, MODEL),
+        BASE_URL = COALESCE(:baseUrl, BASE_URL),
+        TYPE = COALESCE(:type, TYPE),
+        ENABLED = COALESCE(:enabled, ENABLED),
+        UPDATE_USER_ID = :updateUserId,
+        UPDATE_USER_NAME = :updateUserName,
+        UPDATE_TIME = :updateTime
+    WHERE ID = :id AND ORG_ID = :orgId AND REMOVED = 0
+
+  update_with_api_key: |
+    UPDATE MODEL_CONFIG
+    SET MODEL = COALESCE(:model, MODEL),
+        API_KEY = :apiKey,
+        BASE_URL = COALESCE(:baseUrl, BASE_URL),
+        TYPE = COALESCE(:type, TYPE),
+        ENABLED = COALESCE(:enabled, ENABLED),
+        UPDATE_USER_ID = :updateUserId,
+        UPDATE_USER_NAME = :updateUserName,
+        UPDATE_TIME = :updateTime
+    WHERE ID = :id AND ORG_ID = :orgId AND REMOVED = 0
+
+  lock_for_delete: |
+    SELECT ID AS id FROM MODEL_CONFIG
+    WHERE ORG_ID = :orgId AND REMOVED = 0 AND FIND_IN_SET(ID, :ids)
+    ORDER BY ID FOR UPDATE
+
+  agent_references: |
+    SELECT ID AS id, AGENT_NAME AS agentName FROM AI_AGENT
+    WHERE ORG_ID = :orgId AND REMOVED = 0
+      AND (FIND_IN_SET(INTENT_LLM_ID, :ids) OR FIND_IN_SET(TASK_LLM_ID, :ids)
+        OR FIND_IN_SET(EXECUT_LLM_ID, :ids) OR FIND_IN_SET(SUMMARY_LLM_ID, :ids))
+    ORDER BY ID LIMIT 20 FOR UPDATE
+  skill_references: |
+    SELECT ID AS id,SKILL_NAME AS skillName FROM SKILL
+    WHERE ORG_ID=:orgId AND REMOVED=0
+      AND (FIND_IN_SET(INTENT_LLM_ID,:ids) OR FIND_IN_SET(TASK_LLM_ID,:ids)
+        OR FIND_IN_SET(EXECUT_LLM_ID,:ids) OR FIND_IN_SET(SUMMARY_LLM_ID,:ids))
+    ORDER BY ID LIMIT 20 FOR UPDATE
+
+  delete: |
+    DELETE FROM MODEL_CONFIG
+    WHERE ORG_ID = :orgId AND REMOVED = 0 AND FIND_IN_SET(ID, :ids)
+      AND NOT EXISTS (
+        SELECT 1 FROM SKILL
+        WHERE SKILL.ORG_ID=:orgId AND SKILL.REMOVED=0
+          AND (SKILL.INTENT_LLM_ID = MODEL_CONFIG.ID
+            OR SKILL.TASK_LLM_ID = MODEL_CONFIG.ID
+            OR SKILL.EXECUT_LLM_ID = MODEL_CONFIG.ID
+            OR SKILL.SUMMARY_LLM_ID = MODEL_CONFIG.ID)
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM AI_AGENT
+        WHERE AI_AGENT.ORG_ID = :orgId AND AI_AGENT.REMOVED = 0
+          AND (AI_AGENT.INTENT_LLM_ID = MODEL_CONFIG.ID
+            OR AI_AGENT.TASK_LLM_ID = MODEL_CONFIG.ID
+            OR AI_AGENT.EXECUT_LLM_ID = MODEL_CONFIG.ID
+            OR AI_AGENT.SUMMARY_LLM_ID = MODEL_CONFIG.ID)
+      )
+
+system_config:
+  count: |
+    SELECT COUNT(*) AS total
+    FROM SYSTEM_CONFIG
+    WHERE ORG_ID = :orgId
+      AND REMOVED = 0
+      AND (:configName IS NULL OR CONFIG_NAME LIKE CONCAT('%', :configName, '%'))
+      AND (:configType IS NULL OR CONFIG_TYPE = :configType)
+      AND (:enabled IS NULL OR ENABLED = :enabled)
+
+  list: |
+    SELECT
+      ID AS id,
+      ORG_ID AS orgId,
+      CONFIG_TYPE AS configType,
+      CONFIG_NAME AS configName,
+      CONFIG_JSON AS configJson,
+      ENABLED AS enabled,
+      CREATE_USER_NAME AS createUserName,
+      CREATE_TIME AS createTime,
+      UPDATE_USER_NAME AS updateUserName,
+      UPDATE_TIME AS updateTime
+    FROM SYSTEM_CONFIG
+    WHERE ORG_ID = :orgId
+      AND REMOVED = 0
+      AND (:configName IS NULL OR CONFIG_NAME LIKE CONCAT('%', :configName, '%'))
+      AND (:configType IS NULL OR CONFIG_TYPE = :configType)
+      AND (:enabled IS NULL OR ENABLED = :enabled)
+    ORDER BY CONFIG_TYPE, ID DESC
+    LIMIT :limit OFFSET :offset
+
+  list_active: |
+    SELECT ID AS id, CONFIG_TYPE AS configType, CONFIG_NAME AS configName, CONFIG_JSON AS configJson
+    FROM SYSTEM_CONFIG
+    WHERE ORG_ID = :orgId AND ENABLED = 1 AND REMOVED = 0
+    ORDER BY CONFIG_TYPE, ID
+
+  find_by_id: |
+    SELECT ID AS id, CONFIG_TYPE AS configType, CONFIG_NAME AS configName,
+           CONFIG_JSON AS configJson, ENABLED AS enabled
+    FROM SYSTEM_CONFIG
+    WHERE ID = :id AND ORG_ID = :orgId AND REMOVED = 0
+
+  find_duplicate: |
+    SELECT ID AS id
+    FROM SYSTEM_CONFIG
+    WHERE ORG_ID = :orgId
+      AND CONFIG_TYPE = :configType
+      AND CONFIG_NAME = :configName
+      AND ID <> :excludeId
+      AND REMOVED = 0
+
+  insert: |
+    INSERT INTO SYSTEM_CONFIG (
+      ORG_ID, CONFIG_TYPE, CONFIG_NAME, CONFIG_JSON, ENABLED, REMOVED,
+      CREATE_USER_ID, CREATE_USER_NAME, CREATE_TIME
+    ) VALUES (
+      :orgId, :configType, :configName, :configJson, :enabled, 0,
+      :createUserId, :createUserName, :createTime
+    )
+
+  update: |
+    UPDATE SYSTEM_CONFIG
+    SET CONFIG_TYPE = COALESCE(:configType, CONFIG_TYPE),
+        CONFIG_NAME = COALESCE(:configName, CONFIG_NAME),
+        CONFIG_JSON = COALESCE(:configJson, CONFIG_JSON),
+        ENABLED = COALESCE(:enabled, ENABLED),
+        UPDATE_USER_ID = :updateUserId,
+        UPDATE_USER_NAME = :updateUserName,
+        UPDATE_TIME = :updateTime
+    WHERE ID = :id AND ORG_ID = :orgId AND REMOVED = 0
+
+  delete: |
+    DELETE FROM SYSTEM_CONFIG
+    WHERE ID = :id AND ORG_ID = :orgId
+      AND NOT EXISTS (
+        SELECT 1 FROM PROJECT_GROUP
+        WHERE SANDBOX_CONFIG_ID = :id AND ORG_ID = :orgId AND REMOVED = 0
+      )
+
+  sandbox_references: |
+    SELECT ID AS id, GROUP_NAME AS groupName FROM PROJECT_GROUP
+    WHERE SANDBOX_CONFIG_ID = :id AND ORG_ID = :orgId AND REMOVED = 0
+    ORDER BY ID

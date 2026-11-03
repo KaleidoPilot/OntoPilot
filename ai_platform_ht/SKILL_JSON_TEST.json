@@ -1,0 +1,1780 @@
+{
+    "version": 2, 
+    "title": "通用经营分析报告", 
+    "purpose": "基于ERP或业务系统数据，对销售、商品、客户、供应商及库存进行多维度诊断，识别经营结构问题与风险点。", 
+    "sections": [
+        {
+            "id": "overview", 
+            "heading": "一、报告概要", 
+            "instruction": "说明数据来源（如系统记录）、统计截止时间及覆盖的业务实体数量。明确统计口径（如是否含取消订单、成本核算方式）。提炼3-5条核心结论，涵盖盈利能力、结构集中度、资金效率及流程瓶颈。", 
+            "format": "prose", 
+            "formats": [
+                "prose"
+            ], 
+            "intent": "界定分析范围、统计口径及核心结论，为后续详细分析提供背景与摘要。", 
+            "analysis": [
+                "梳理数据边界与定义", 
+                "提取关键绩效指标(KPI)的定性评价", 
+                "总结主要矛盾（如规模vs效率、结构vs风险）"
+            ], 
+            "dataNeeds": [
+                "统计周期", 
+                "数据源类型", 
+                "核心KPI数值", 
+                "主要异常现象描述"
+            ], 
+            "dataSources": [ ], 
+            "dataInputs": [
+                {
+                    "dataNeed": "统计周期", 
+                    "kind": "user_input", 
+                    "sectionIds": [ ], 
+                    "reason": "需要用户指定报告涵盖的开始和结束日期。"
+                }, 
+                {
+                    "dataNeed": "核心KPI数值", 
+                    "kind": "user_input", 
+                    "sectionIds": [ ], 
+                    "reason": "虽然可从数据计算，但“核心KPI”的定义（如是否包含退货率、周转天数等特定指标）需用户确认优先级。"
+                }, 
+                {
+                    "dataNeed": "主要异常现象描述", 
+                    "kind": "user_input", 
+                    "sectionIds": [ ], 
+                    "reason": "属于定性总结，需用户在阅读初步数据后确认或提供背景信息。"
+                }
+            ], 
+            "unmappedDataNeeds": [
+                "数据源类型"
+            ]
+        }, 
+        {
+            "id": "business-overview", 
+            "heading": "二、经营总览", 
+            "instruction": "列出销售额、毛利、毛利率、客单价、库存占用等关键指标及其本期数值。简述订单总量、有效/无效比例及金额分布特征（如均衡性或极端值）。", 
+            "format": "table", 
+            "formats": [
+                "table", 
+                "prose"
+            ], 
+            "intent": "展示整体经营健康度，通过关键指标和订单概况建立全局视角。", 
+            "analysis": [
+                "计算并对比核心财务与运营指标", 
+                "评估订单金额的离散程度与代表性"
+            ], 
+            "dataNeeds": [
+                "总销售额", 
+                "总毛利额", 
+                "毛利率", 
+                "客单价", 
+                "订单总数及状态分布", 
+                "单笔订单金额极值"
+            ], 
+            "dataSources": [
+                {
+                    "dataNeed": "总销售额", 
+                    "kind": "derived", 
+                    "sources": [
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 111, 
+                            "tableName": "virtual_erp.sales_orders", 
+                            "columnName": "total_amount", 
+                            "columnType": "decimal(14,2)", 
+                            "columnComment": "订单总额"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 111, 
+                            "tableName": "virtual_erp.sales_orders", 
+                            "columnName": "status", 
+                            "columnType": "varchar(16)", 
+                            "columnComment": "订单状态"
+                        }
+                    ], 
+                    "relationIds": [ ], 
+                    "derivation": "SUM(total_amount) WHERE status NOT IN ('cancelled', 'invalid') AND order_date BETWEEN :start_date AND :end_date", 
+                    "conditions": [
+                        "按用户需求确定统计期间", 
+                        "需用户确认哪些状态视为有效销售（排除取消/无效）"
+                    ], 
+                    "note": "基于销售订单主表汇总金额，需结合状态字段过滤非有效订单。"
+                }, 
+                {
+                    "dataNeed": "总毛利额", 
+                    "kind": "derived", 
+                    "sources": [
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 112, 
+                            "tableName": "virtual_erp.sales_order_items", 
+                            "columnName": "amount", 
+                            "columnType": "decimal(14,2)", 
+                            "columnComment": "行金额"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 112, 
+                            "tableName": "virtual_erp.sales_order_items", 
+                            "columnName": "qty", 
+                            "columnType": "int(11)", 
+                            "columnComment": "数量"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 110, 
+                            "tableName": "virtual_erp.products", 
+                            "columnName": "cost_price", 
+                            "columnType": "decimal(12,2)", 
+                            "columnComment": "成本价"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 111, 
+                            "tableName": "virtual_erp.sales_orders", 
+                            "columnName": "status", 
+                            "columnType": "varchar(16)", 
+                            "columnComment": "订单状态"
+                        }
+                    ], 
+                    "relationIds": [
+                        {
+                            "projectGroupId": 38, 
+                            "relationId": 27
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "relationId": 28
+                        }
+                    ], 
+                    "derivation": "SUM((sales_order_items.amount - sales_order_items.qty * products.cost_price)) JOIN sales_orders ON ... WHERE sales_orders.status NOT IN ('cancelled', 'invalid') AND sales_orders.order_date BETWEEN :start_date AND :end_date", 
+                    "conditions": [
+                        "按用户需求确定统计期间", 
+                        "需用户确认成本核算方式（此处使用商品表标准成本价）"
+                    ], 
+                    "note": "通过关联订单明细与商品表获取成本，计算行级毛利后汇总。依赖关系ID 27和28。"
+                }, 
+                {
+                    "dataNeed": "毛利率", 
+                    "kind": "derived", 
+                    "sources": [
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 112, 
+                            "tableName": "virtual_erp.sales_order_items", 
+                            "columnName": "amount", 
+                            "columnType": "decimal(14,2)", 
+                            "columnComment": "行金额"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 112, 
+                            "tableName": "virtual_erp.sales_order_items", 
+                            "columnName": "qty", 
+                            "columnType": "int(11)", 
+                            "columnComment": "数量"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 110, 
+                            "tableName": "virtual_erp.products", 
+                            "columnName": "cost_price", 
+                            "columnType": "decimal(12,2)", 
+                            "columnComment": "成本价"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 111, 
+                            "tableName": "virtual_erp.sales_orders", 
+                            "columnName": "status", 
+                            "columnType": "varchar(16)", 
+                            "columnComment": "订单状态"
+                        }
+                    ], 
+                    "relationIds": [
+                        {
+                            "projectGroupId": 38, 
+                            "relationId": 27
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "relationId": 28
+                        }
+                    ], 
+                    "derivation": "(SUM(sales_order_items.amount) - SUM(sales_order_items.qty * products.cost_price)) / SUM(sales_order_items.amount) * 100% WHERE sales_orders.status NOT IN ('cancelled', 'invalid') AND sales_orders.order_date BETWEEN :start_date AND :end_date", 
+                    "conditions": [
+                        "按用户需求确定统计期间"
+                    ], 
+                    "note": "基于总销售额和总毛利额计算比率。"
+                }, 
+                {
+                    "dataNeed": "客单价", 
+                    "kind": "derived", 
+                    "sources": [
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 111, 
+                            "tableName": "virtual_erp.sales_orders", 
+                            "columnName": "total_amount", 
+                            "columnType": "decimal(14,2)", 
+                            "columnComment": "订单总额"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 111, 
+                            "tableName": "virtual_erp.sales_orders", 
+                            "columnName": "customer_id", 
+                            "columnType": "int(11)", 
+                            "columnComment": "关联客户id"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 111, 
+                            "tableName": "virtual_erp.sales_orders", 
+                            "columnName": "status", 
+                            "columnType": "varchar(16)", 
+                            "columnComment": "订单状态"
+                        }
+                    ], 
+                    "relationIds": [ ], 
+                    "derivation": "SUM(total_amount) / COUNT(DISTINCT customer_id) WHERE status NOT IN ('cancelled', 'invalid') AND order_date BETWEEN :start_date AND :end_date", 
+                    "conditions": [
+                        "按用户需求确定统计期间", 
+                        "需用户确认客单价定义是按订单均值还是按客户贡献均值"
+                    ], 
+                    "note": "通常指平均每笔订单金额或平均每位客户消费金额，此处暂按每笔有效订单的平均金额理解，若需按客户去重则调整分母。根据上下文“经营总览”通常关注单笔交易价值，故采用订单总额/订单数或总额/客户数。鉴于ERP常见口径，若未指定，建议明确为：SUM(total_amount)/COUNT(id)。但字段名为客单价，可能隐含按客户维度。此处映射为基于订单表的聚合，具体公式需用户确认是AVG(total_amount)还是SUM/COUNT(DISTINCT customer_id)。为安全起见，标记为需确认口径。"
+                }, 
+                {
+                    "dataNeed": "订单总数及状态分布", 
+                    "kind": "derived", 
+                    "sources": [
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 111, 
+                            "tableName": "virtual_erp.sales_orders", 
+                            "columnName": "id", 
+                            "columnType": "int(11)", 
+                            "columnComment": "主键id"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 111, 
+                            "tableName": "virtual_erp.sales_orders", 
+                            "columnName": "status", 
+                            "columnType": "varchar(16)", 
+                            "columnComment": "订单状态"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 111, 
+                            "tableName": "virtual_erp.sales_orders", 
+                            "columnName": "order_date", 
+                            "columnType": "date", 
+                            "columnComment": "下单日期"
+                        }
+                    ], 
+                    "relationIds": [ ], 
+                    "derivation": "COUNT(id) GROUP BY status WHERE order_date BETWEEN :start_date AND :end_date", 
+                    "conditions": [
+                        "按用户需求确定统计期间"
+                    ], 
+                    "note": "统计各状态下的订单数量。"
+                }, 
+                {
+                    "dataNeed": "单笔订单金额极值", 
+                    "kind": "derived", 
+                    "sources": [
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 111, 
+                            "tableName": "virtual_erp.sales_orders", 
+                            "columnName": "total_amount", 
+                            "columnType": "decimal(14,2)", 
+                            "columnComment": "订单总额"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 111, 
+                            "tableName": "virtual_erp.sales_orders", 
+                            "columnName": "order_date", 
+                            "columnType": "date", 
+                            "columnComment": "下单日期"
+                        }
+                    ], 
+                    "relationIds": [ ], 
+                    "derivation": "MAX(total_amount), MIN(total_amount) WHERE order_date BETWEEN :start_date AND :end_date", 
+                    "conditions": [
+                        "按用户需求确定统计期间"
+                    ], 
+                    "note": "获取订单金额的最大值和最小值。"
+                }
+            ], 
+            "dataInputs": [ ], 
+            "unmappedDataNeeds": [ ]
+        }, 
+        {
+            "id": "sales-order-analysis", 
+            "heading": "三、销售订单分析", 
+            "instruction": "按订单维度列示金额占比。分析订单构成（品项数、件数与金额的关系），指出“量价背离”现象。统计订单状态分布，重点分析停滞在特定环节（如待处理）的比例及原因。单独分析取消订单的影响。", 
+            "format": "table", 
+            "formats": [
+                "table", 
+                "prose"
+            ], 
+            "intent": "深入剖析订单的结构、流转效率及异常情况，识别履约瓶颈。", 
+            "analysis": [
+                "计算各订单占总营收比重", 
+                "关联分析件数、品项与金额的非线性关系", 
+                "统计各状态订单的数量与金额占比", 
+                "评估取消订单对品类销售的冲击"
+            ], 
+            "dataNeeds": [
+                "订单明细（ID、客户、金额、状态）", 
+                "订单行项目（商品、数量、单价）", 
+                "订单时间戳（用于判断流转速度）", 
+                "取消订单的具体原因或影响"
+            ], 
+            "dataSources": [
+                {
+                    "dataNeed": "订单明细（ID、客户、金额、状态）", 
+                    "kind": "direct", 
+                    "sources": [
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 111, 
+                            "tableName": "virtual_erp.sales_orders", 
+                            "columnName": "id", 
+                            "columnType": "int(11)", 
+                            "columnComment": "主键id"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 111, 
+                            "tableName": "virtual_erp.sales_orders", 
+                            "columnName": "customer_id", 
+                            "columnType": "int(11)", 
+                            "columnComment": "关联客户id"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 111, 
+                            "tableName": "virtual_erp.sales_orders", 
+                            "columnName": "total_amount", 
+                            "columnType": "decimal(14,2)", 
+                            "columnComment": "订单总额"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 111, 
+                            "tableName": "virtual_erp.sales_orders", 
+                            "columnName": "status", 
+                            "columnType": "varchar(16)", 
+                            "columnComment": "订单状态"
+                        }
+                    ], 
+                    "relationIds": [ ], 
+                    "derivation": "", 
+                    "conditions": [ ], 
+                    "note": "直接取自销售订单主表。"
+                }, 
+                {
+                    "dataNeed": "订单行项目（商品、数量、单价）", 
+                    "kind": "direct", 
+                    "sources": [
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 112, 
+                            "tableName": "virtual_erp.sales_order_items", 
+                            "columnName": "product_id", 
+                            "columnType": "int(11)", 
+                            "columnComment": "商品id"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 112, 
+                            "tableName": "virtual_erp.sales_order_items", 
+                            "columnName": "qty", 
+                            "columnType": "int(11)", 
+                            "columnComment": "数量"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 112, 
+                            "tableName": "virtual_erp.sales_order_items", 
+                            "columnName": "unit_price", 
+                            "columnType": "decimal(12,2)", 
+                            "columnComment": "成交单价"
+                        }
+                    ], 
+                    "relationIds": [ ], 
+                    "derivation": "", 
+                    "conditions": [ ], 
+                    "note": "直接取自销售订单明细表。"
+                }, 
+                {
+                    "dataNeed": "订单时间戳（用于判断流转速度）", 
+                    "kind": "direct", 
+                    "sources": [
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 111, 
+                            "tableName": "virtual_erp.sales_orders", 
+                            "columnName": "created_at", 
+                            "columnType": "datetime", 
+                            "columnComment": "创建时间"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 111, 
+                            "tableName": "virtual_erp.sales_orders", 
+                            "columnName": "updated_at", 
+                            "columnType": "datetime", 
+                            "columnComment": "更新时间"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 111, 
+                            "tableName": "virtual_erp.sales_orders", 
+                            "columnName": "order_date", 
+                            "columnType": "date", 
+                            "columnComment": "下单日期"
+                        }
+                    ], 
+                    "relationIds": [ ], 
+                    "derivation": "", 
+                    "conditions": [ ], 
+                    "note": "利用创建时间和更新时间差估算处理时长，或利用下单日期分析时效性。"
+                }
+            ], 
+            "dataInputs": [
+                {
+                    "dataNeed": "取消订单的具体原因或影响", 
+                    "kind": "user_input", 
+                    "sectionIds": [ ], 
+                    "reason": "数据库remark字段可能为空或非结构化，具体原因分类需人工标注或用户提供规则。"
+                }
+            ], 
+            "unmappedDataNeeds": [ ]
+        }, 
+        {
+            "id": "product-analysis", 
+            "heading": "四、商品分析", 
+            "instruction": "对比销量与销售额占比，揭示高销量低价值或低销量高价值商品。分析毛利贡献结构。依据销售额累计占比进行ABC分级。专门分析零销售或低周转商品的库存占用情况。", 
+            "format": "table", 
+            "formats": [
+                "table", 
+                "prose"
+            ], 
+            "intent": "评估商品的销售贡献、盈利能力及生命周期状态，识别主力与滞销品。", 
+            "analysis": [
+                "计算单品销量占比与销售额占比的差异", 
+                "汇总各商品毛利额及毛利率", 
+                "执行帕累托分析（80/20法则）确定主力商品", 
+                "量化滞销商品的资金沉淀"
+            ], 
+            "dataNeeds": [
+                "商品名称/编码", 
+                "销量", 
+                "销售额", 
+                "标准成本/实际成本", 
+                "当前库存数量", 
+                "历史销售记录"
+            ], 
+            "dataSources": [
+                {
+                    "dataNeed": "商品名称/编码", 
+                    "kind": "direct", 
+                    "sources": [
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 110, 
+                            "tableName": "virtual_erp.products", 
+                            "columnName": "name", 
+                            "columnType": "varchar(128)", 
+                            "columnComment": "商品名称"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 110, 
+                            "tableName": "virtual_erp.products", 
+                            "columnName": "sku", 
+                            "columnType": "varchar(64)", 
+                            "columnComment": "SKU 编码"
+                        }
+                    ], 
+                    "relationIds": [ ], 
+                    "derivation": "", 
+                    "conditions": [ ], 
+                    "note": "直接取自商品表。"
+                }, 
+                {
+                    "dataNeed": "销量", 
+                    "kind": "derived", 
+                    "sources": [
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 112, 
+                            "tableName": "virtual_erp.sales_order_items", 
+                            "columnName": "qty", 
+                            "columnType": "int(11)", 
+                            "columnComment": "数量"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 111, 
+                            "tableName": "virtual_erp.sales_orders", 
+                            "columnName": "status", 
+                            "columnType": "varchar(16)", 
+                            "columnComment": "订单状态"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 111, 
+                            "tableName": "virtual_erp.sales_orders", 
+                            "columnName": "order_date", 
+                            "columnType": "date", 
+                            "columnComment": "下单日期"
+                        }
+                    ], 
+                    "relationIds": [
+                        {
+                            "projectGroupId": 38, 
+                            "relationId": 27
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "relationId": 28
+                        }
+                    ], 
+                    "derivation": "SUM(sales_order_items.qty) GROUP BY sales_order_items.product_id WHERE sales_orders.status NOT IN ('cancelled', 'invalid') AND sales_orders.order_date BETWEEN :start_date AND :end_date", 
+                    "conditions": [
+                        "按用户需求确定统计期间"
+                    ], 
+                    "note": "通过关联订单明细与主表，过滤有效订单后汇总商品数量。"
+                }, 
+                {
+                    "dataNeed": "销售额", 
+                    "kind": "derived", 
+                    "sources": [
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 112, 
+                            "tableName": "virtual_erp.sales_order_items", 
+                            "columnName": "amount", 
+                            "columnType": "decimal(14,2)", 
+                            "columnComment": "行金额"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 111, 
+                            "tableName": "virtual_erp.sales_orders", 
+                            "columnName": "status", 
+                            "columnType": "varchar(16)", 
+                            "columnComment": "订单状态"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 111, 
+                            "tableName": "virtual_erp.sales_orders", 
+                            "columnName": "order_date", 
+                            "columnType": "date", 
+                            "columnComment": "下单日期"
+                        }
+                    ], 
+                    "relationIds": [
+                        {
+                            "projectGroupId": 38, 
+                            "relationId": 27
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "relationId": 28
+                        }
+                    ], 
+                    "derivation": "SUM(sales_order_items.amount) GROUP BY sales_order_items.product_id WHERE sales_orders.status NOT IN ('cancelled', 'invalid') AND sales_orders.order_date BETWEEN :start_date AND :end_date", 
+                    "conditions": [
+                        "按用户需求确定统计期间"
+                    ], 
+                    "note": "通过关联订单明细与主表，过滤有效订单后汇总商品金额。"
+                }, 
+                {
+                    "dataNeed": "标准成本/实际成本", 
+                    "kind": "direct", 
+                    "sources": [
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 110, 
+                            "tableName": "virtual_erp.products", 
+                            "columnName": "cost_price", 
+                            "columnType": "decimal(12,2)", 
+                            "columnComment": "成本价"
+                        }
+                    ], 
+                    "relationIds": [ ], 
+                    "derivation": "", 
+                    "conditions": [ ], 
+                    "note": "商品表中仅有cost_price字段，假设为标准成本。若无移动加权平均等实际成本字段，只能使用此静态成本。"
+                }, 
+                {
+                    "dataNeed": "当前库存数量", 
+                    "kind": "direct", 
+                    "sources": [
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 110, 
+                            "tableName": "virtual_erp.products", 
+                            "columnName": "stock_qty", 
+                            "columnType": "int(11)", 
+                            "columnComment": "库存数量"
+                        }
+                    ], 
+                    "relationIds": [ ], 
+                    "derivation": "", 
+                    "conditions": [ ], 
+                    "note": "直接取自商品表。"
+                }, 
+                {
+                    "dataNeed": "历史销售记录", 
+                    "kind": "derived", 
+                    "sources": [
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 112, 
+                            "tableName": "virtual_erp.sales_order_items", 
+                            "columnName": "product_id", 
+                            "columnType": "int(11)", 
+                            "columnComment": "商品id"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 112, 
+                            "tableName": "virtual_erp.sales_order_items", 
+                            "columnName": "qty", 
+                            "columnType": "int(11)", 
+                            "columnComment": "数量"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 111, 
+                            "tableName": "virtual_erp.sales_orders", 
+                            "columnName": "order_date", 
+                            "columnType": "date", 
+                            "columnComment": "下单日期"
+                        }
+                    ], 
+                    "relationIds": [
+                        {
+                            "projectGroupId": 38, 
+                            "relationId": 27
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "relationId": 28
+                        }
+                    ], 
+                    "derivation": "SELECT product_id, qty, order_date FROM sales_order_items JOIN sales_orders ON ... ORDER BY order_date DESC", 
+                    "conditions": [
+                        "按用户需求确定查询的时间跨度"
+                    ], 
+                    "note": "通过关联查询获取带有日期的销售明细列表。"
+                }
+            ], 
+            "dataInputs": [ ], 
+            "unmappedDataNeeds": [ ]
+        }, 
+        {
+            "id": "customer-analysis", 
+            "heading": "五、客户分析", 
+            "instruction": "列出主要客户的订单数、销售额及占比。计算客户集中度指标（如CR1, CR2, HHI指数）。分析客户转化率及复购行为，区分活跃客户与沉睡/流失客户。", 
+            "format": "table", 
+            "formats": [
+                "table", 
+                "prose"
+            ], 
+            "intent": "衡量客户贡献度、集中度及活跃度，评估营收结构的稳定性。", 
+            "analysis": [
+                "排序客户销售额并计算累计占比", 
+                "评估单一客户依赖风险", 
+                "统计有成交客户占建档客户的比例", 
+                "分析平均下单频次与客单价差异"
+            ], 
+            "dataNeeds": [
+                "客户名称", 
+                "订单数量", 
+                "总销售额", 
+                "首次/最近交易日期", 
+                "客户状态（活跃/休眠）"
+            ], 
+            "dataSources": [
+                {
+                    "dataNeed": "客户名称", 
+                    "kind": "direct", 
+                    "sources": [
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 109, 
+                            "tableName": "virtual_erp.customers", 
+                            "columnName": "name", 
+                            "columnType": "varchar(128)", 
+                            "columnComment": "客户名称"
+                        }
+                    ], 
+                    "relationIds": [ ], 
+                    "derivation": "", 
+                    "conditions": [ ], 
+                    "note": "直接取自客户表。"
+                }, 
+                {
+                    "dataNeed": "订单数量", 
+                    "kind": "derived", 
+                    "sources": [
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 111, 
+                            "tableName": "virtual_erp.sales_orders", 
+                            "columnName": "customer_id", 
+                            "columnType": "int(11)", 
+                            "columnComment": "关联客户id"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 111, 
+                            "tableName": "virtual_erp.sales_orders", 
+                            "columnName": "id", 
+                            "columnType": "int(11)", 
+                            "columnComment": "主键id"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 111, 
+                            "tableName": "virtual_erp.sales_orders", 
+                            "columnName": "status", 
+                            "columnType": "varchar(16)", 
+                            "columnComment": "订单状态"
+                        }
+                    ], 
+                    "relationIds": [
+                        {
+                            "projectGroupId": 38, 
+                            "relationId": 26
+                        }
+                    ], 
+                    "derivation": "COUNT(sales_orders.id) GROUP BY customers.id WHERE sales_orders.status NOT IN ('cancelled', 'invalid')", 
+                    "conditions": [
+                        "按用户需求确定统计期间"
+                    ], 
+                    "note": "关联客户表与订单表，统计每个客户的订单数。"
+                }, 
+                {
+                    "dataNeed": "总销售额", 
+                    "kind": "derived", 
+                    "sources": [
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 111, 
+                            "tableName": "virtual_erp.sales_orders", 
+                            "columnName": "customer_id", 
+                            "columnType": "int(11)", 
+                            "columnComment": "关联客户id"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 111, 
+                            "tableName": "virtual_erp.sales_orders", 
+                            "columnName": "total_amount", 
+                            "columnType": "decimal(14,2)", 
+                            "columnComment": "订单总额"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 111, 
+                            "tableName": "virtual_erp.sales_orders", 
+                            "columnName": "status", 
+                            "columnType": "varchar(16)", 
+                            "columnComment": "订单状态"
+                        }
+                    ], 
+                    "relationIds": [
+                        {
+                            "projectGroupId": 38, 
+                            "relationId": 26
+                        }
+                    ], 
+                    "derivation": "SUM(sales_orders.total_amount) GROUP BY customers.id WHERE sales_orders.status NOT IN ('cancelled', 'invalid')", 
+                    "conditions": [
+                        "按用户需求确定统计期间"
+                    ], 
+                    "note": "关联客户表与订单表，汇总每个客户的订单总金额。"
+                }, 
+                {
+                    "dataNeed": "首次/最近交易日期", 
+                    "kind": "derived", 
+                    "sources": [
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 111, 
+                            "tableName": "virtual_erp.sales_orders", 
+                            "columnName": "customer_id", 
+                            "columnType": "int(11)", 
+                            "columnComment": "关联客户id"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 111, 
+                            "tableName": "virtual_erp.sales_orders", 
+                            "columnName": "order_date", 
+                            "columnType": "date", 
+                            "columnComment": "下单日期"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 111, 
+                            "tableName": "virtual_erp.sales_orders", 
+                            "columnName": "status", 
+                            "columnType": "varchar(16)", 
+                            "columnComment": "订单状态"
+                        }
+                    ], 
+                    "relationIds": [
+                        {
+                            "projectGroupId": 38, 
+                            "relationId": 26
+                        }
+                    ], 
+                    "derivation": "MIN(order_date), MAX(order_date) GROUP BY customers.id WHERE sales_orders.status NOT IN ('cancelled', 'invalid')", 
+                    "conditions": [
+                        "全量历史数据或按用户需求确定统计期间"
+                    ], 
+                    "note": "获取客户最早和最晚的有效订单日期。"
+                }
+            ], 
+            "dataInputs": [
+                {
+                    "dataNeed": "客户状态（活跃/休眠）", 
+                    "kind": "user_input", 
+                    "sectionIds": [ ], 
+                    "reason": "需用户定义活跃/休眠的时间阈值（例如：最近90天有交易为活跃）。"
+                }
+            ], 
+            "unmappedDataNeeds": [ ]
+        }, 
+        {
+            "id": "supplier-analysis", 
+            "heading": "六、供应商分析", 
+            "instruction": "盘点现有供应商档案完整性。检查采购单据与入库记录的关联性，验证供应商是否真正参与业务闭环。若存在断链，需明确指出采购来源不可追溯的问题。推测供应商对应的品类支持能力。", 
+            "format": "table", 
+            "formats": [
+                "table", 
+                "prose"
+            ], 
+            "intent": "审查供应链资源现状及其与采购业务的实际衔接情况，识别管理盲区。", 
+            "analysis": [
+                "核对供应商名录与实际采购记录的一致性", 
+                "评估采购成本的可归集性", 
+                "分析供应商资源与实际需求的匹配度"
+            ], 
+            "dataNeeds": [
+                "供应商基本信息", 
+                "采购订单记录", 
+                "入库单中的供应商字段", 
+                "商品与供应商的理论对应关系"
+            ], 
+            "dataSources": [
+                {
+                    "dataNeed": "供应商基本信息", 
+                    "kind": "direct", 
+                    "sources": [
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 114, 
+                            "tableName": "virtual_erp.suppliers", 
+                            "columnName": "code", 
+                            "columnType": "varchar(32)", 
+                            "columnComment": "供应商编码"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 114, 
+                            "tableName": "virtual_erp.suppliers", 
+                            "columnName": "name", 
+                            "columnType": "varchar(128)", 
+                            "columnComment": "供应商名称"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 114, 
+                            "tableName": "virtual_erp.suppliers", 
+                            "columnName": "contact", 
+                            "columnType": "varchar(64)", 
+                            "columnComment": "联系人"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 114, 
+                            "tableName": "virtual_erp.suppliers", 
+                            "columnName": "phone", 
+                            "columnType": "varchar(32)", 
+                            "columnComment": "电话"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 114, 
+                            "tableName": "virtual_erp.suppliers", 
+                            "columnName": "address", 
+                            "columnType": "varchar(255)", 
+                            "columnComment": "地址"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 114, 
+                            "tableName": "virtual_erp.suppliers", 
+                            "columnName": "status", 
+                            "columnType": "int(11)", 
+                            "columnComment": "1正常 0停用"
+                        }
+                    ], 
+                    "relationIds": [ ], 
+                    "derivation": "", 
+                    "conditions": [ ], 
+                    "note": "直接取自供应商表。"
+                }
+            ], 
+            "dataInputs": [ ], 
+            "unmappedDataNeeds": [
+                "采购订单记录", 
+                "入库单中的供应商字段", 
+                "商品与供应商的理论对应关系"
+            ]
+        }, 
+        {
+            "id": "inventory-analysis", 
+            "heading": "七、库存分析", 
+            "instruction": "按品类或商品列示库存数量、成本金额及销售货值。计算动销率与库销比。检查安全库存设置与实际库存水平的偏差，评估预警功能是否失效（如普遍超储导致无缺货报警）。分析进销存净变动趋势。", 
+            "format": "table", 
+            "formats": [
+                "table", 
+                "prose"
+            ], 
+            "intent": "评估库存结构、资金占用效率及预警机制的有效性。", 
+            "analysis": [
+                "计算库存资金占用总额及占比", 
+                "推导动销率（销量/(销量+库存)）和库销比", 
+                "对比当前库存与安全库存阈值", 
+                "分析入库来源（采购vs退货）与出库去向"
+            ], 
+            "dataNeeds": [
+                "SKU级库存数量", 
+                "单位成本与销售价", 
+                "安全库存设定值", 
+                "期间内入库与出库明细"
+            ], 
+            "dataSources": [
+                {
+                    "dataNeed": "SKU级库存数量", 
+                    "kind": "direct", 
+                    "sources": [
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 110, 
+                            "tableName": "virtual_erp.products", 
+                            "columnName": "sku", 
+                            "columnType": "varchar(64)", 
+                            "columnComment": "SKU 编码"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 110, 
+                            "tableName": "virtual_erp.products", 
+                            "columnName": "stock_qty", 
+                            "columnType": "int(11)", 
+                            "columnComment": "库存数量"
+                        }
+                    ], 
+                    "relationIds": [ ], 
+                    "derivation": "", 
+                    "conditions": [ ], 
+                    "note": "直接取自商品表。"
+                }, 
+                {
+                    "dataNeed": "单位成本与销售价", 
+                    "kind": "direct", 
+                    "sources": [
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 110, 
+                            "tableName": "virtual_erp.products", 
+                            "columnName": "cost_price", 
+                            "columnType": "decimal(12,2)", 
+                            "columnComment": "成本价"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 110, 
+                            "tableName": "virtual_erp.products", 
+                            "columnName": "sale_price", 
+                            "columnType": "decimal(12,2)", 
+                            "columnComment": "销售价"
+                        }
+                    ], 
+                    "relationIds": [ ], 
+                    "derivation": "", 
+                    "conditions": [ ], 
+                    "note": "直接取自商品表。"
+                }, 
+                {
+                    "dataNeed": "安全库存设定值", 
+                    "kind": "direct", 
+                    "sources": [
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 110, 
+                            "tableName": "virtual_erp.products", 
+                            "columnName": "safety_stock", 
+                            "columnType": "int(11)", 
+                            "columnComment": "安全库存"
+                        }
+                    ], 
+                    "relationIds": [ ], 
+                    "derivation": "", 
+                    "conditions": [ ], 
+                    "note": "直接取自商品表。"
+                }, 
+                {
+                    "dataNeed": "期间内入库与出库明细", 
+                    "kind": "derived", 
+                    "sources": [
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 113, 
+                            "tableName": "virtual_erp.stock_logs", 
+                            "columnName": "product_id", 
+                            "columnType": "int(11)", 
+                            "columnComment": "商品id"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 113, 
+                            "tableName": "virtual_erp.stock_logs", 
+                            "columnName": "change_qty", 
+                            "columnType": "int(11)", 
+                            "columnComment": "变动数量"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 113, 
+                            "tableName": "virtual_erp.stock_logs", 
+                            "columnName": "change_type", 
+                            "columnType": "varchar(16)", 
+                            "columnComment": "变动类型"
+                        }, 
+                        {
+                            "projectGroupId": 38, 
+                            "projectGroupName": "erp测试商品", 
+                            "databaseName": "virtual_erp", 
+                            "tableId": 113, 
+                            "tableName": "virtual_erp.stock_logs", 
+                            "columnName": "created_at", 
+                            "columnType": "datetime", 
+                            "columnComment": "创建时间"
+                        }
+                    ], 
+                    "relationIds": [
+                        {
+                            "projectGroupId": 38, 
+                            "relationId": 29
+                        }
+                    ], 
+                    "derivation": "SELECT product_id, change_qty, change_type, created_at FROM stock_logs WHERE created_at BETWEEN :start_date AND :end_date", 
+                    "conditions": [
+                        "按用户需求确定统计期间", 
+                        "需用户确认change_type的具体枚举值以区分入库/出库"
+                    ], 
+                    "note": "从库存流水表获取变动记录，需结合change_type判断方向。"
+                }
+            ], 
+            "dataInputs": [ ], 
+            "unmappedDataNeeds": [ ]
+        }, 
+        {
+            "id": "diagnosis", 
+            "heading": "八、经营诊断", 
+            "instruction": "汇总关键发现列表，每项附带数据依据。将问题分类为：直接影响现金流/利润的问题、影响收入确认的流程问题、以及基础管理缺失导致的结构性问题。", 
+            "format": "table", 
+            "formats": [
+                "table", 
+                "list"
+            ], 
+            "intent": "综合前述章节发现，提炼核心问题并按轻重缓急排序。", 
+            "analysis": [
+                "交叉验证各模块发现的因果关系", 
+                "根据涉及金额和数据确定性对问题进行优先级排序", 
+                "区分短期战术问题与长期战略隐患"
+            ], 
+            "dataNeeds": [
+                "前文各章节的关键异常点", 
+                "相关问题的量化影响（金额或比例）"
+            ], 
+            "dataSources": [ ], 
+            "dataInputs": [ ], 
+            "unmappedDataNeeds": [
+                "前文各章节的关键异常点", 
+                "相关问题的量化影响（金额或比例）"
+            ]
+        }, 
+        {
+            "id": "conclusion", 
+            "heading": "九、结论", 
+            "instruction": "简要回顾整体经营状况（盈利vs规模）。概括商品、客户、供应商、库存四个维度的主要特征。明确指出当前最需要解决的两个具体着力点（如处置滞销库存、推进停滞订单）。", 
+            "format": "prose", 
+            "formats": [
+                "prose"
+            ], 
+            "intent": "总结全文，重申核心观点，指出最紧迫的行动方向。", 
+            "analysis": [
+                "综合评估业务闭环的完整性", 
+                "提炼最具行动指导意义的结论"
+            ], 
+            "dataNeeds": [
+                "全文核心论点", 
+                "最高优先级的改进建议"
+            ], 
+            "dataSources": [ ], 
+            "dataInputs": [ ], 
+            "unmappedDataNeeds": [
+                "全文核心论点", 
+                "最高优先级的改进建议"
+            ]
+        }
+    ], 
+    "rules": [
+        "所有金额需注明币种，比率保留两位小数。", 
+        "对于无法从数据直接推导的关联（如供应商与商品），需明确标注为“推测”或“无法验证”，不得作为既定事实陈述。", 
+        "当样本量较小时，侧重分析结构合理性而非增长趋势，避免强行使用同比/环比。", 
+        "表格中的数据必须与正文分析逻辑一致，正文应解释表格中的异常值或显著差异。", 
+        "保持客观中立语气，用数据支撑观点，避免主观臆断。", 
+        "保留模板明确的排名数量、筛选范围和表格列顺序；例如前三名不能自行改成前五名。本次用户明确调整时才按新要求执行。", 
+        "原模板没有图表且用户未要求时不主动新增图表。构成图只使用互斥的明细项，禁止把合计、小计、总计作为一个类别重复计算。", 
+        "库存缺口数量=max(安全库存-当前库存,0)，不能出现负数；模板要求库存风险清单时，仅列正缺口商品，不把正常库存混入风险清单。", 
+        "数据需求区分数据库字段、用户需确认的业务口径、前序章节结果及真正缺项；已有前文结果不要求用户重复提供。"
+    ], 
+    "presentation": {
+        "version": 1, 
+        "outline": [
+            "一、报告概要	1", 
+            "二、经营总览	1", 
+            "三、销售订单分析	1", 
+            "四、商品分析	1", 
+            "五、客户分析	1", 
+            "六、供应商分析	1", 
+            "七、库存分析	1", 
+            "八、经营诊断	1", 
+            "九、结论	1", 
+            "一、报告概要", 
+            "二、经营总览", 
+            "三、销售订单分析", 
+            "四、商品分析", 
+            "五、客户分析", 
+            "六、供应商分析", 
+            "七、库存分析", 
+            "八、经营诊断", 
+            "九、结论"
+        ], 
+        "roles": {
+            "title": {
+                "fontFamily": "Microsoft YaHei", 
+                "fontSize": 11, 
+                "bold": false, 
+                "alignment": "center", 
+                "firstLineIndent": 0, 
+                "leftIndent": 0, 
+                "rightIndent": 0, 
+                "spaceBefore": 150, 
+                "spaceAfter": 18, 
+                "lineMultiple": 1.75
+            }, 
+            "body": {
+                "fontFamily": "SimSun", 
+                "fontSize": 12, 
+                "bold": false, 
+                "alignment": "justify", 
+                "firstLineIndent": 24, 
+                "leftIndent": 0, 
+                "rightIndent": 0, 
+                "spaceBefore": 0, 
+                "spaceAfter": 8, 
+                "lineMultiple": 1.75
+            }, 
+            "section": {
+                "fontFamily": "SimSun", 
+                "fontSize": 12, 
+                "bold": false, 
+                "alignment": "left", 
+                "firstLineIndent": 0, 
+                "leftIndent": 0, 
+                "rightIndent": 0, 
+                "spaceBefore": 6, 
+                "spaceAfter": 6, 
+                "lineMultiple": 1.5
+            }
+        }, 
+        "page": {
+            "width": 595.3, 
+            "height": 841.9, 
+            "left": 90, 
+            "right": 90, 
+            "top": 72, 
+            "bottom": 72
+        }, 
+        "signatureCount": 0, 
+        "maxHeadingLevel": 2
+    }, 
+    "projectGroupIds": [
+        38
+    ], 
+    "dataContext": {
+        "groups": [
+            {
+                "id": 38, 
+                "groupName": "erp测试商品", 
+                "databaseName": "virtual_erp", 
+                "tables": [
+                    {
+                        "id": 109, 
+                        "tableName": "virtual_erp.customers", 
+                        "tableCnName": "客户表", 
+                        "comment": "客户表", 
+                        "columns": [
+                            {
+                                "name": "id", 
+                                "type": "int(11)", 
+                                "comment": "", 
+                                "remark": ""
+                            }, 
+                            {
+                                "name": "code", 
+                                "type": "varchar(32)", 
+                                "comment": "客户编码", 
+                                "remark": "客户编码"
+                            }, 
+                            {
+                                "name": "name", 
+                                "type": "varchar(128)", 
+                                "comment": "客户名称", 
+                                "remark": "客户名称"
+                            }, 
+                            {
+                                "name": "contact", 
+                                "type": "varchar(64)", 
+                                "comment": "联系人", 
+                                "remark": "联系人"
+                            }, 
+                            {
+                                "name": "phone", 
+                                "type": "varchar(32)", 
+                                "comment": "电话", 
+                                "remark": "电话"
+                            }, 
+                            {
+                                "name": "email", 
+                                "type": "varchar(128)", 
+                                "comment": "邮箱", 
+                                "remark": "邮箱"
+                            }, 
+                            {
+                                "name": "address", 
+                                "type": "varchar(255)", 
+                                "comment": "地址", 
+                                "remark": "地址"
+                            }, 
+                            {
+                                "name": "status", 
+                                "type": "int(11)", 
+                                "comment": "1正常 0停用", 
+                                "remark": "1正常 0停用"
+                            }, 
+                            {
+                                "name": "created_at", 
+                                "type": "datetime", 
+                                "comment": "创建时间", 
+                                "remark": "创建时间"
+                            }, 
+                            {
+                                "name": "updated_at", 
+                                "type": "datetime", 
+                                "comment": "更新时间", 
+                                "remark": "更新时间"
+                            }
+                        ]
+                    }, 
+                    {
+                        "id": 110, 
+                        "tableName": "virtual_erp.products", 
+                        "tableCnName": "商品表", 
+                        "comment": "商品表", 
+                        "columns": [
+                            {
+                                "name": "id", 
+                                "type": "int(11)", 
+                                "comment": "", 
+                                "remark": ""
+                            }, 
+                            {
+                                "name": "sku", 
+                                "type": "varchar(64)", 
+                                "comment": "SKU 编码", 
+                                "remark": "SKU 编码"
+                            }, 
+                            {
+                                "name": "name", 
+                                "type": "varchar(128)", 
+                                "comment": "商品名称", 
+                                "remark": "商品名称"
+                            }, 
+                            {
+                                "name": "category", 
+                                "type": "varchar(64)", 
+                                "comment": "分类", 
+                                "remark": "分类"
+                            }, 
+                            {
+                                "name": "unit", 
+                                "type": "varchar(16)", 
+                                "comment": "单位", 
+                                "remark": "单位"
+                            }, 
+                            {
+                                "name": "cost_price", 
+                                "type": "decimal(12,2)", 
+                                "comment": "成本价", 
+                                "remark": "成本价"
+                            }, 
+                            {
+                                "name": "sale_price", 
+                                "type": "decimal(12,2)", 
+                                "comment": "销售价", 
+                                "remark": "销售价"
+                            }, 
+                            {
+                                "name": "stock_qty", 
+                                "type": "int(11)", 
+                                "comment": "库存数量", 
+                                "remark": "库存数量"
+                            }, 
+                            {
+                                "name": "safety_stock", 
+                                "type": "int(11)", 
+                                "comment": "安全库存", 
+                                "remark": "安全库存"
+                            }, 
+                            {
+                                "name": "status", 
+                                "type": "int(11)", 
+                                "comment": "1在售 0下架", 
+                                "remark": "1在售 0下架"
+                            }, 
+                            {
+                                "name": "created_at", 
+                                "type": "datetime", 
+                                "comment": "创建时间", 
+                                "remark": "创建时间"
+                            }, 
+                            {
+                                "name": "updated_at", 
+                                "type": "datetime", 
+                                "comment": "更新时间", 
+                                "remark": "更新时间"
+                            }
+                        ]
+                    }, 
+                    {
+                        "id": 111, 
+                        "tableName": "virtual_erp.sales_orders", 
+                        "tableCnName": "销售订单表", 
+                        "comment": "销售订单表", 
+                        "columns": [
+                            {
+                                "name": "id", 
+                                "type": "int(11)", 
+                                "comment": "", 
+                                "remark": "主键id"
+                            }, 
+                            {
+                                "name": "order_no", 
+                                "type": "varchar(32)", 
+                                "comment": "订单号", 
+                                "remark": "订单号"
+                            }, 
+                            {
+                                "name": "customer_id", 
+                                "type": "int(11)", 
+                                "comment": "", 
+                                "remark": "关联客户id"
+                            }, 
+                            {
+                                "name": "order_date", 
+                                "type": "date", 
+                                "comment": "下单日期", 
+                                "remark": "下单日期"
+                            }, 
+                            {
+                                "name": "status", 
+                                "type": "varchar(16)", 
+                                "comment": "订单状态", 
+                                "remark": "订单状态"
+                            }, 
+                            {
+                                "name": "total_amount", 
+                                "type": "decimal(14,2)", 
+                                "comment": "订单总额", 
+                                "remark": "订单总额"
+                            }, 
+                            {
+                                "name": "remark", 
+                                "type": "text", 
+                                "comment": "备注", 
+                                "remark": "备注"
+                            }, 
+                            {
+                                "name": "created_at", 
+                                "type": "datetime", 
+                                "comment": "创建时间", 
+                                "remark": "创建时间"
+                            }, 
+                            {
+                                "name": "updated_at", 
+                                "type": "datetime", 
+                                "comment": "更新时间", 
+                                "remark": "更新时间"
+                            }
+                        ]
+                    }, 
+                    {
+                        "id": 112, 
+                        "tableName": "virtual_erp.sales_order_items", 
+                        "tableCnName": "销售订单明细表", 
+                        "comment": "销售订单明细表", 
+                        "columns": [
+                            {
+                                "name": "id", 
+                                "type": "int(11)", 
+                                "comment": "", 
+                                "remark": ""
+                            }, 
+                            {
+                                "name": "order_id", 
+                                "type": "int(11)", 
+                                "comment": "", 
+                                "remark": "关联订单id"
+                            }, 
+                            {
+                                "name": "product_id", 
+                                "type": "int(11)", 
+                                "comment": "", 
+                                "remark": "商品id"
+                            }, 
+                            {
+                                "name": "qty", 
+                                "type": "int(11)", 
+                                "comment": "数量", 
+                                "remark": "数量"
+                            }, 
+                            {
+                                "name": "unit_price", 
+                                "type": "decimal(12,2)", 
+                                "comment": "成交单价", 
+                                "remark": "成交单价"
+                            }, 
+                            {
+                                "name": "amount", 
+                                "type": "decimal(14,2)", 
+                                "comment": "行金额", 
+                                "remark": "行金额"
+                            }
+                        ]
+                    }, 
+                    {
+                        "id": 113, 
+                        "tableName": "virtual_erp.stock_logs", 
+                        "tableCnName": "库存流水表", 
+                        "comment": "库存流水表", 
+                        "columns": [
+                            {
+                                "name": "id", 
+                                "type": "int(11)", 
+                                "comment": "", 
+                                "remark": ""
+                            }, 
+                            {
+                                "name": "product_id", 
+                                "type": "int(11)", 
+                                "comment": "", 
+                                "remark": "商品id"
+                            }, 
+                            {
+                                "name": "change_qty", 
+                                "type": "int(11)", 
+                                "comment": "变动数量", 
+                                "remark": "变动数量"
+                            }, 
+                            {
+                                "name": "change_type", 
+                                "type": "varchar(16)", 
+                                "comment": "变动类型", 
+                                "remark": "变动类型"
+                            }, 
+                            {
+                                "name": "ref_no", 
+                                "type": "varchar(64)", 
+                                "comment": "关联单号", 
+                                "remark": "关联单号"
+                            }, 
+                            {
+                                "name": "remark", 
+                                "type": "varchar(255)", 
+                                "comment": "备注", 
+                                "remark": "备注"
+                            }, 
+                            {
+                                "name": "created_at", 
+                                "type": "datetime", 
+                                "comment": "", 
+                                "remark": "创建时间"
+                            }
+                        ]
+                    }, 
+                    {
+                        "id": 114, 
+                        "tableName": "virtual_erp.suppliers", 
+                        "tableCnName": "供应商表", 
+                        "comment": "供应商表", 
+                        "columns": [
+                            {
+                                "name": "id", 
+                                "type": "int(11)", 
+                                "comment": "", 
+                                "remark": ""
+                            }, 
+                            {
+                                "name": "code", 
+                                "type": "varchar(32)", 
+                                "comment": "供应商编码", 
+                                "remark": "供应商编码"
+                            }, 
+                            {
+                                "name": "name", 
+                                "type": "varchar(128)", 
+                                "comment": "供应商名称", 
+                                "remark": "供应商名称"
+                            }, 
+                            {
+                                "name": "contact", 
+                                "type": "varchar(64)", 
+                                "comment": "联系人", 
+                                "remark": "联系人"
+                            }, 
+                            {
+                                "name": "phone", 
+                                "type": "varchar(32)", 
+                                "comment": "电话", 
+                                "remark": "电话"
+                            }, 
+                            {
+                                "name": "address", 
+                                "type": "varchar(255)", 
+                                "comment": "地址", 
+                                "remark": "地址"
+                            }, 
+                            {
+                                "name": "status", 
+                                "type": "int(11)", 
+                                "comment": "1正常 0停用", 
+                                "remark": "1正常 0停用"
+                            }, 
+                            {
+                                "name": "created_at", 
+                                "type": "datetime", 
+                                "comment": "创建时间", 
+                                "remark": "创建时间"
+                            }, 
+                            {
+                                "name": "updated_at", 
+                                "type": "datetime", 
+                                "comment": "更新时间", 
+                                "remark": "更新时间"
+                            }
+                        ]
+                    }
+                ], 
+                "relations": [
+                    {
+                        "id": 26, 
+                        "sourceTableId": 109, 
+                        "sourceColumn": "id", 
+                        "targetTableId": 111, 
+                        "targetColumn": "customer_id", 
+                        "relationContent": "一个客户可以对应多个销售订单", 
+                        "remarks": null
+                    }, 
+                    {
+                        "id": 27, 
+                        "sourceTableId": 111, 
+                        "sourceColumn": "id", 
+                        "targetTableId": 112, 
+                        "targetColumn": "order_id", 
+                        "relationContent": "一个销售订单包含多个订单明细行", 
+                        "remarks": null
+                    }, 
+                    {
+                        "id": 28, 
+                        "sourceTableId": 110, 
+                        "sourceColumn": "id", 
+                        "targetTableId": 112, 
+                        "targetColumn": "product_id", 
+                        "relationContent": "一个商品可以出现在多个订单明细中", 
+                        "remarks": null
+                    }, 
+                    {
+                        "id": 29, 
+                        "sourceTableId": 110, 
+                        "sourceColumn": "id", 
+                        "targetTableId": 113, 
+                        "targetColumn": "product_id", 
+                        "relationContent": "一个商品对应多条库存变动流水记录", 
+                        "remarks": null
+                    }
+                ]
+            }
+        ], 
+        "warnings": [ ]
+    }
+}

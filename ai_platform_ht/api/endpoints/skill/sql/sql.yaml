@@ -1,0 +1,1050 @@
+personal_skill:
+  knowledge_options: |
+    SELECT ID AS id,TENANT_NAME AS tenantName,SCOPE_TYPE AS scopeType FROM AI_TENANT
+    WHERE ORG_ID=:orgId AND REMOVED=0 AND ENABLED=1 AND FIND_IN_SET(ID,:tenantIds)>0 ORDER BY ID
+  list: |
+    SELECT ID AS id,SKILL_NAME AS skillName,SKILL_DESCRIPTION AS skillDescription,RULE_CONTENT AS ruleContent,
+      SKILL_LEVEL_TYPE AS skillLevelType,SUB_SKILL_IDS AS subSkillIds,ENABLED AS enabled,
+      INTENT_LLM_ID AS intentLlmId,TASK_LLM_ID AS taskLlmId,EXECUT_LLM_ID AS executLlmId,SUMMARY_LLM_ID AS summaryLlmId,
+      TEMPERATURE AS temperature,TABLE_IDS AS tableIds,TENANT_IDS AS tenantIds,RESOURCE_CONFIGURED AS resourceConfigured
+    FROM SKILL WHERE ORG_ID=:orgId AND USER_ID=:userId AND SKILL_TYPE=3 AND REMOVED=0
+      AND (:keyword='' OR SKILL_NAME LIKE :pattern OR SKILL_DESCRIPTION LIKE :pattern)
+    ORDER BY ID DESC LIMIT :limit OFFSET :offset
+  detail: |
+    SELECT ID AS id,SKILL_NAME AS skillName,SKILL_DESCRIPTION AS skillDescription,RULE_CONTENT AS ruleContent,
+      SKILL_LEVEL_TYPE AS skillLevelType,SUB_SKILL_IDS AS subSkillIds,ENABLED AS enabled,
+      INTENT_LLM_ID AS intentLlmId,TASK_LLM_ID AS taskLlmId,EXECUT_LLM_ID AS executLlmId,SUMMARY_LLM_ID AS summaryLlmId,
+      TEMPERATURE AS temperature,TABLE_IDS AS tableIds,TENANT_IDS AS tenantIds,RESOURCE_CONFIGURED AS resourceConfigured
+    FROM SKILL WHERE ID=:skillId AND ORG_ID=:orgId AND USER_ID=:userId AND SKILL_TYPE=3 AND REMOVED=0
+  lock: |
+    SELECT ID AS id,SKILL_LEVEL_TYPE AS skillLevelType FROM SKILL
+    WHERE ID=:skillId AND ORG_ID=:orgId AND USER_ID=:userId AND SKILL_TYPE=3 AND REMOVED=0 FOR UPDATE
+  duplicate: |
+    SELECT ID AS id FROM SKILL WHERE ORG_ID=:orgId AND USER_ID=:userId AND SKILL_TYPE=3 AND REMOVED=0
+      AND SKILL_NAME=:skillName AND ID<>:skillId
+  insert: |
+    INSERT INTO SKILL (ORG_ID,USER_ID,SKILL_TYPE,SKILL_NAME,SKILL_DESCRIPTION,RULE_CONTENT,SKILL_LEVEL_TYPE,
+      SUB_SKILL_IDS,ENABLED,REMOVED,INTENT_LLM_ID,TASK_LLM_ID,EXECUT_LLM_ID,SUMMARY_LLM_ID,TEMPERATURE,
+      TABLE_IDS,TENANT_IDS,RESOURCE_CONFIGURED,CREATE_USER_ID,CREATE_USER_NAME,CREATE_TIME)
+    VALUES (:orgId,:userId,3,:skillName,:skillDescription,:ruleContent,:skillLevelType,:subSkillIds,:enabled,0,
+      :intentLlmId,:taskLlmId,:executLlmId,:summaryLlmId,:temperature,:tableIds,:tenantIds,1,
+      :createUserId,:createUserName,:createTime)
+  update: |
+    UPDATE SKILL SET SKILL_NAME=:skillName,SKILL_DESCRIPTION=:skillDescription,RULE_CONTENT=:ruleContent,
+      SKILL_LEVEL_TYPE=:skillLevelType,SUB_SKILL_IDS=:subSkillIds,ENABLED=:enabled,
+      INTENT_LLM_ID=:intentLlmId,TASK_LLM_ID=:taskLlmId,EXECUT_LLM_ID=:executLlmId,SUMMARY_LLM_ID=:summaryLlmId,
+      TEMPERATURE=:temperature,TABLE_IDS=:tableIds,TENANT_IDS=:tenantIds,RESOURCE_CONFIGURED=1,
+      UPDATE_USER_ID=:updateUserId,UPDATE_USER_NAME=:updateUserName,UPDATE_TIME=:updateTime
+    WHERE ID=:skillId AND ORG_ID=:orgId AND USER_ID=:userId AND SKILL_TYPE=3 AND REMOVED=0
+  sub_choices: |
+    SELECT ID AS id,SKILL_NAME AS skillName FROM SKILL WHERE ORG_ID=:orgId AND USER_ID=:userId
+      AND SKILL_TYPE=3 AND SKILL_LEVEL_TYPE=2 AND REMOVED=0 AND ENABLED=1 ORDER BY ID
+  parents: |
+    SELECT ID AS id FROM SKILL WHERE ORG_ID=:orgId AND USER_ID=:userId AND SKILL_TYPE=3 AND REMOVED=0
+      AND FIND_IN_SET(:skillId,SUB_SKILL_IDS)>0 ORDER BY ID FOR UPDATE
+  table_options: |
+    SELECT DISTINCT t.ID AS id,t.TABLE_NAME AS tableName,t.TABLE_CN_NAME AS tableCnName,t.COLUMNS_JSON AS columnsJson,
+      p.ID AS projectGroupId,p.GROUP_NAME AS projectGroupName
+    FROM TABLE_MANAGEMENT t JOIN PROJECT_GROUP p ON p.ID=t.PROJECT_GROUP_ID
+    WHERE p.ORG_ID=:orgId AND p.LEVEL=0 AND p.ENABLED=1 AND p.REMOVED=0 AND p.SANDBOX_CONFIG_ID IS NOT NULL
+      AND t.ENABLED=1 AND t.REMOVED=0 AND EXISTS (
+        SELECT 1 FROM SKILL s JOIN SKILL_GROUP g ON g.ID=s.SKILL_GROUP_ID AND g.ORG_ID=s.ORG_ID AND g.ENABLED=1
+        JOIN SKILL_GROUP_USER_GROUP b ON b.SKILL_GROUP_ID=g.ID AND b.ORG_ID=g.ORG_ID
+        JOIN USER_GROUP u ON u.ID=b.USER_GROUP_ID AND u.ORG_ID=b.ORG_ID AND u.ENABLED=1
+        JOIN USER_INFO_WB w ON w.GROUP_ID=u.ID AND w.ID=:userId AND w.ENABLED=1
+        WHERE s.ORG_ID=:orgId AND s.SKILL_TYPE IN (1,2) AND s.ENABLED=1 AND s.REMOVED=0
+          AND FIND_IN_SET(t.ID,s.TABLE_IDS)>0)
+    ORDER BY p.ID,t.ID
+imported:
+  count: |
+    SELECT COUNT(*) AS total FROM SKILL
+    WHERE ORG_ID = :orgId AND USER_ID = :userId AND SKILL_TYPE = 3 AND REMOVED = 0
+      AND (:enabled IS NULL OR ENABLED = :enabled)
+      AND (:keyword IS NULL OR SKILL_NAME LIKE CONCAT('%', :keyword, '%') OR SKILL_DESCRIPTION LIKE CONCAT('%', :keyword, '%'))
+  list: |
+    SELECT ID AS id, SKILL_NAME AS skillName, SKILL_DESCRIPTION AS skillDescription,
+      RULE_CONTENT AS ruleContent, ENABLED AS enabled FROM SKILL
+    WHERE ORG_ID = :orgId AND USER_ID = :userId AND SKILL_TYPE = 3 AND REMOVED = 0
+      AND (:enabled IS NULL OR ENABLED = :enabled)
+      AND (:keyword IS NULL OR SKILL_NAME LIKE CONCAT('%', :keyword, '%') OR SKILL_DESCRIPTION LIKE CONCAT('%', :keyword, '%'))
+    ORDER BY ID DESC LIMIT :limit OFFSET :offset
+  lock: |
+    SELECT ID AS id FROM SKILL WHERE ID = :id AND ORG_ID = :orgId AND USER_ID = :userId
+      AND SKILL_TYPE = 3 AND REMOVED = 0 FOR UPDATE
+  insert: |
+    INSERT INTO SKILL (ORG_ID, USER_ID, SKILL_NAME, SKILL_DESCRIPTION, RULE_CONTENT,
+      SKILL_TYPE, SKILL_LEVEL_TYPE, ENABLED, REMOVED, CREATE_USER_ID, CREATE_USER_NAME, CREATE_TIME)
+    VALUES (:orgId, :userId, :skillName, :skillDescription, :ruleContent, 3, 1, :enabled, 0,
+      :createUserId, :createUserName, :createTime)
+  update: |
+    UPDATE SKILL SET SKILL_NAME = :skillName, SKILL_DESCRIPTION = :skillDescription,
+      RULE_CONTENT = :ruleContent, ENABLED = :enabled,
+      UPDATE_USER_ID = :updateUserId, UPDATE_USER_NAME = :updateUserName, UPDATE_TIME = :updateTime
+    WHERE ID = :id AND ORG_ID = :orgId AND USER_ID = :userId AND SKILL_TYPE = 3 AND REMOVED = 0
+  references: |
+    SELECT ID AS id FROM AI_AGENT WHERE ORG_ID = :orgId AND REMOVED = 0
+      AND FIND_IN_SET(:id, SKILL_IDS) > 0 ORDER BY ID FOR UPDATE
+  delete: |
+    DELETE FROM SKILL WHERE ID = :id AND ORG_ID = :orgId AND USER_ID = :userId AND SKILL_TYPE = 3 AND REMOVED = 0
+  binding_choices: |
+    SELECT ID AS id, SKILL_NAME AS skillName, RULE_CONTENT AS ruleContent FROM SKILL
+    WHERE ORG_ID = :orgId AND USER_ID = :userId AND SKILL_TYPE = 3 AND REMOVED = 0 AND ENABLED = 1
+      AND FIND_IN_SET(ID, :skillIds) > 0 ORDER BY ID FOR UPDATE
+  options: |
+    SELECT ID AS id, SKILL_NAME AS skillName FROM SKILL
+    WHERE ORG_ID = :orgId AND USER_ID = :userId AND SKILL_TYPE = 3 AND REMOVED = 0 AND ENABLED = 1
+    ORDER BY ID DESC LIMIT :limit OFFSET :offset
+  runtime_rules: |
+    SELECT ID AS id, SKILL_NAME AS skillName, RULE_CONTENT AS ruleContent FROM SKILL
+    WHERE ORG_ID = :orgId AND USER_ID = :userId AND SKILL_TYPE = 3 AND REMOVED = 0 AND ENABLED = 1
+      AND FIND_IN_SET(ID, :skillIds) > 0 ORDER BY ID
+
+template_generation:
+  create_table: |
+    CREATE TABLE TEMPLATE_GENERATION (
+      ID VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
+      ORG_ID BIGINT NOT NULL,
+      USER_ID BIGINT NOT NULL,
+      OWNER_TYPE VARCHAR(16) NOT NULL,
+      SKILL_NAME VARCHAR(100) NOT NULL,
+      DESCRIPTION VARCHAR(1000) NOT NULL,
+      SOURCE_TASK_ID VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+      KNOWLEDGE_GRAPH_ID BIGINT NULL COMMENT '逻辑关联 AI_KNOWLEDGE_GRAPH.ID；空表示未关联知识库图谱',
+      PROJECT_GROUP_IDS_JSON TEXT NOT NULL,
+      SKILL_JSON LONGTEXT NOT NULL,
+      SKILL_MARKDOWN LONGTEXT NOT NULL,
+      META_JSON LONGTEXT NOT NULL,
+      STATUS VARCHAR(16) NOT NULL DEFAULT 'ready',
+      CREATE_USER_ID BIGINT NULL,
+      CREATE_USER_NAME VARCHAR(55) NULL,
+      CREATE_TIME VARCHAR(55) NOT NULL,
+      UPDATE_USER_ID BIGINT NULL,
+      UPDATE_USER_NAME VARCHAR(55) NULL,
+      UPDATE_TIME VARCHAR(55) NULL,
+      INDEX idx_template_generation_owner (ORG_ID, OWNER_TYPE, USER_ID, CREATE_TIME),
+      INDEX idx_template_generation_task (SOURCE_TASK_ID),
+      INDEX idx_template_generation_graph (ORG_ID, KNOWLEDGE_GRAPH_ID)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='模板生成的写作Skill及项目组数据来源'
+  find: |
+    SELECT ID AS id, SKILL_JSON AS skillJson, SKILL_MARKDOWN AS skillMarkdown,
+      META_JSON AS metaJson, STATUS AS status, SOURCE_TASK_ID AS sourceTaskId
+    FROM TEMPLATE_GENERATION
+    WHERE ID=:id AND ORG_ID=:orgId AND (
+      (OWNER_TYPE=:ownerType AND (:ownerType='company' OR USER_ID=:userId))
+      OR (:ownerType='personal' AND OWNER_TYPE='company' AND STATUS='ready' AND :accessGroupId>0
+        AND JSON_CONTAINS_PATH(META_JSON,'one','$.accessUserGroupIds')=1
+        AND (COALESCE(JSON_TYPE(JSON_EXTRACT(META_JSON,'$.accessUserGroupIds')),'NULL')='NULL'
+          OR JSON_CONTAINS(JSON_EXTRACT(META_JSON,'$.accessUserGroupIds'),JSON_ARRAY(:accessGroupId))=1)))
+  count: |
+    SELECT COUNT(*) AS total FROM TEMPLATE_GENERATION
+    WHERE ORG_ID=:orgId AND (
+      (OWNER_TYPE=:ownerType AND (:ownerType='company' OR USER_ID=:userId))
+      OR (:ownerType='personal' AND OWNER_TYPE='company' AND STATUS='ready' AND :accessGroupId>0
+        AND JSON_CONTAINS_PATH(META_JSON,'one','$.accessUserGroupIds')=1
+        AND (COALESCE(JSON_TYPE(JSON_EXTRACT(META_JSON,'$.accessUserGroupIds')),'NULL')='NULL'
+          OR JSON_CONTAINS(JSON_EXTRACT(META_JSON,'$.accessUserGroupIds'),JSON_ARRAY(:accessGroupId))=1)))
+      AND (:keyword='' OR SKILL_NAME LIKE :pattern OR DESCRIPTION LIKE :pattern)
+  list: |
+    SELECT META_JSON AS metaJson, STATUS AS status FROM TEMPLATE_GENERATION
+    WHERE ORG_ID=:orgId AND (
+      (OWNER_TYPE=:ownerType AND (:ownerType='company' OR USER_ID=:userId))
+      OR (:ownerType='personal' AND OWNER_TYPE='company' AND STATUS='ready' AND :accessGroupId>0
+        AND JSON_CONTAINS_PATH(META_JSON,'one','$.accessUserGroupIds')=1
+        AND (COALESCE(JSON_TYPE(JSON_EXTRACT(META_JSON,'$.accessUserGroupIds')),'NULL')='NULL'
+          OR JSON_CONTAINS(JSON_EXTRACT(META_JSON,'$.accessUserGroupIds'),JSON_ARRAY(:accessGroupId))=1)))
+      AND (:keyword='' OR SKILL_NAME LIKE :pattern OR DESCRIPTION LIKE :pattern)
+    ORDER BY CREATE_TIME DESC, ID DESC LIMIT :limit OFFSET :offset
+  insert: |
+    INSERT INTO TEMPLATE_GENERATION
+      (ID,ORG_ID,USER_ID,OWNER_TYPE,SKILL_NAME,DESCRIPTION,SOURCE_TASK_ID,PROJECT_GROUP_IDS_JSON,
+       SKILL_JSON,SKILL_MARKDOWN,META_JSON,STATUS,CREATE_USER_ID,CREATE_USER_NAME,CREATE_TIME)
+    VALUES (:id,:orgId,:userId,:ownerType,:skillName,:description,:sourceTaskId,:projectGroupIdsJson,
+      :skillJson,:skillMarkdown,:metaJson,'ready',:createUserId,:createUserName,:createTime)
+  mark_deleting: |
+    UPDATE TEMPLATE_GENERATION SET STATUS='deleting',UPDATE_TIME=:updateTime,
+      UPDATE_USER_ID=:updateUserId,UPDATE_USER_NAME=:updateUserName
+    WHERE ID=:id AND ORG_ID=:orgId AND OWNER_TYPE=:ownerType
+      AND (:ownerType='company' OR USER_ID=:userId)
+  delete: |
+    DELETE FROM TEMPLATE_GENERATION WHERE ID=:id AND ORG_ID=:orgId AND OWNER_TYPE=:ownerType
+      AND (:ownerType='company' OR USER_ID=:userId) AND STATUS='deleting'
+  access_groups: |
+    SELECT ID AS id, ENABLED AS enabled FROM USER_GROUP
+    WHERE ORG_ID=:orgId AND FIND_IN_SET(ID,:userGroupIds)>0 ORDER BY ID FOR UPDATE
+  access_lock: |
+    SELECT ID AS id FROM TEMPLATE_GENERATION
+    WHERE ORG_ID=:orgId AND OWNER_TYPE='company' AND STATUS='ready'
+      AND FIND_IN_SET(ID,:templateIds)>0 ORDER BY ID FOR UPDATE
+  access_update: |
+    UPDATE TEMPLATE_GENERATION
+    SET META_JSON=JSON_SET(META_JSON,'$.accessUserGroupIds',JSON_EXTRACT(:accessJson,'$')),
+      UPDATE_USER_ID=:updateUserId,UPDATE_USER_NAME=:updateUserName,UPDATE_TIME=:updateTime
+    WHERE ID=:id AND ORG_ID=:orgId AND OWNER_TYPE='company' AND STATUS='ready'
+
+skill_execution:
+  external_actor: |
+    SELECT w.ID AS id,u.ID AS groupId FROM USER_INFO_WB w
+    JOIN USER_GROUP u ON u.ID=w.GROUP_ID AND u.ORG_ID=:orgId AND u.ENABLED=1
+    JOIN ORGANIZATION o ON o.ID=u.ORG_ID AND o.ENABLED=1 AND o.REMOVED=0
+    WHERE w.ID=:userId AND w.ENABLED=1
+  models: |
+    SELECT ID AS id,MODEL AS model,TYPE AS type FROM MODEL_CONFIG
+    WHERE ORG_ID=:orgId AND ENABLED=1 AND REMOVED=0 AND API_KEY<>'' ORDER BY TYPE,ID
+  model_choice: |
+    SELECT ID AS id,TYPE AS type FROM MODEL_CONFIG
+    WHERE ORG_ID=:orgId AND ENABLED=1 AND REMOVED=0 AND API_KEY<>'' AND FIND_IN_SET(ID,:modelIds)>0
+    ORDER BY ID FOR UPDATE
+  runtime_models: |
+    SELECT ID AS id,MODEL AS model,API_KEY AS api_key,BASE_URL AS base_url FROM MODEL_CONFIG
+    WHERE ORG_ID=:orgId AND ENABLED=1 AND REMOVED=0 AND API_KEY<>'' AND FIND_IN_SET(ID,:modelIds)>0
+  duplicate_name: |
+    SELECT ID AS id FROM SKILL WHERE ORG_ID=:orgId AND SKILL_TYPE=:skillType AND REMOVED=0
+      AND SKILL_NAME=:skillName AND ID<>:excludeId
+      AND (:skillType=1 OR PROJECT_GROUP_ID=:projectGroupId)
+  tenants: |
+    SELECT ID AS id,TENANT_NAME AS tenantName,SCOPE_TYPE AS scopeType FROM AI_TENANT
+    WHERE ORG_ID=:orgId AND SCOPE_TYPE IN (1,2) AND ENABLED=1 AND REMOVED=0 ORDER BY ID
+  tenant_choices: |
+    SELECT ID AS id FROM AI_TENANT WHERE ORG_ID=:orgId AND SCOPE_TYPE IN (1,2)
+      AND ENABLED=1 AND REMOVED=0 AND FIND_IN_SET(ID,:tenantIds)>0 ORDER BY ID FOR UPDATE
+  project_groups: |
+    SELECT ID AS id,GROUP_NAME AS groupName,LIBRARY_NAME AS libraryName FROM PROJECT_GROUP
+    WHERE ORG_ID=:orgId AND LEVEL=0 AND PARENT_ID IS NULL AND ENABLED=1 AND REMOVED=0 ORDER BY SORT_ORDER,ID
+  table_options: |
+    SELECT t.ID AS id,t.TABLE_NAME AS tableName,t.TABLE_CN_NAME AS tableCnName,t.COLUMNS_JSON AS columnsJson,
+      p.ID AS projectGroupId,p.GROUP_NAME AS projectGroupName,p.SANDBOX_CONFIG_ID AS sandboxConfigId
+    FROM TABLE_MANAGEMENT t JOIN PROJECT_GROUP p ON p.ID=t.PROJECT_GROUP_ID
+    WHERE p.ORG_ID=:orgId AND p.LEVEL=0 AND p.ENABLED=1 AND p.REMOVED=0 AND t.ENABLED=1 AND t.REMOVED=0
+      AND p.ID=:projectGroupId AND (:keyword='' OR t.TABLE_NAME LIKE :pattern OR t.TABLE_CN_NAME LIKE :pattern)
+    ORDER BY t.ID LIMIT :limit OFFSET :offset
+  table_option_count: |
+    SELECT COUNT(*) AS total FROM TABLE_MANAGEMENT t JOIN PROJECT_GROUP p ON p.ID=t.PROJECT_GROUP_ID
+    WHERE p.ORG_ID=:orgId AND p.LEVEL=0 AND p.ENABLED=1 AND p.REMOVED=0 AND t.ENABLED=1 AND t.REMOVED=0
+      AND p.ID=:projectGroupId AND (:keyword='' OR t.TABLE_NAME LIKE :pattern OR t.TABLE_CN_NAME LIKE :pattern)
+  tables: |
+    SELECT t.ID AS id,t.TABLE_NAME AS tableName,t.TABLE_CN_NAME AS tableCnName,t.COLUMNS_JSON AS columnsJson,
+      p.ID AS projectGroupId,p.GROUP_NAME AS projectGroupName,p.SANDBOX_CONFIG_ID AS sandboxConfigId
+    FROM TABLE_MANAGEMENT t JOIN PROJECT_GROUP p ON p.ID=t.PROJECT_GROUP_ID
+    WHERE p.ORG_ID=:orgId AND p.LEVEL=0 AND p.ENABLED=1 AND p.REMOVED=0 AND t.ENABLED=1 AND t.REMOVED=0
+      AND FIND_IN_SET(t.ID,:tableIds)>0 ORDER BY t.ID
+  table_choices_lock: |
+    SELECT t.ID AS id FROM TABLE_MANAGEMENT t JOIN PROJECT_GROUP p ON p.ID=t.PROJECT_GROUP_ID
+    WHERE p.ORG_ID=:orgId AND p.LEVEL=0 AND p.ENABLED=1 AND p.REMOVED=0 AND t.ENABLED=1 AND t.REMOVED=0
+      AND p.SANDBOX_CONFIG_ID IS NOT NULL AND FIND_IN_SET(t.ID,:tableIds)>0 ORDER BY t.ID FOR UPDATE
+  relations: |
+    SELECT r.ID AS id,r.SOURCE_TABLE_ID AS sourceTableId,r.TARGET_TABLE_ID AS targetTableId,
+      r.SOURCE_COLUMN AS sourceColumn,r.TARGET_COLUMN AS targetColumn,r.RELATION_CONTENT AS description
+    FROM TABLE_RELATION r JOIN PROJECT_GROUP p ON p.ID=r.PROJECT_GROUP_ID
+    WHERE p.ORG_ID=:orgId AND p.ENABLED=1 AND p.REMOVED=0 AND r.ENABLED=1 AND r.REMOVED=0
+      AND FIND_IN_SET(r.SOURCE_TABLE_ID,:tableIds)>0 AND FIND_IN_SET(r.TARGET_TABLE_ID,:tableIds)>0 ORDER BY r.ID
+  skills: |
+    SELECT ID AS id,ORG_ID AS orgId,SKILL_GROUP_ID AS accessGroupId,PROJECT_GROUP_ID AS projectGroupId,
+      SKILL_NAME AS skillName,SKILL_DESCRIPTION AS skillDescription,SKILL_TYPE AS skillType,
+      SKILL_LEVEL_TYPE AS skillLevelType,SUB_SKILL_IDS AS subSkillIds,RULE_CONTENT AS ruleContent,
+      INTENT_LLM_ID AS intentLlmId,TASK_LLM_ID AS taskLlmId,EXECUT_LLM_ID AS executLlmId,SUMMARY_LLM_ID AS summaryLlmId,
+      TEMPERATURE AS temperature,TABLE_IDS AS tableIds,TENANT_IDS AS tenantIds,
+      RESOURCE_CONFIGURED AS resourceConfigured,ENABLED AS enabled,REMOVED AS removed
+    FROM SKILL WHERE ORG_ID=:orgId AND SKILL_TYPE IN (1,2) AND FIND_IN_SET(ID,:skillIds)>0
+  update: |
+    UPDATE SKILL SET SKILL_NAME=:skillName,SKILL_DESCRIPTION=:skillDescription,RULE_CONTENT=:ruleContent,
+      SKILL_LEVEL_TYPE=:skillLevelType,SUB_SKILL_IDS=:subSkillIds,ENABLED=:enabled,
+      INTENT_LLM_ID=:intentLlmId,TASK_LLM_ID=:taskLlmId,EXECUT_LLM_ID=:executLlmId,SUMMARY_LLM_ID=:summaryLlmId,
+      TEMPERATURE=:temperature,TABLE_IDS=:tableIds,TENANT_IDS=:tenantIds,
+      RESOURCE_CONFIGURED=1,UPDATE_USER_ID=:updateUserId,UPDATE_USER_NAME=:updateUserName,UPDATE_TIME=:updateTime
+    WHERE ID=:skillId AND SKILL_GROUP_ID=:id AND ORG_ID=:orgId AND REMOVED=0 AND SKILL_TYPE IN (1,2)
+  sub_skill_choices: |
+    SELECT ID AS id FROM SKILL
+    WHERE ORG_ID=:orgId AND SKILL_GROUP_ID=:id AND REMOVED=0 AND ENABLED=1 AND SKILL_LEVEL_TYPE=2
+      AND SKILL_TYPE=:skillType
+      AND ((:projectGroupId IS NULL AND PROJECT_GROUP_ID IS NULL) OR PROJECT_GROUP_ID=:projectGroupId)
+      AND FIND_IN_SET(ID,:skillIds)>0
+    ORDER BY ID FOR UPDATE
+  lock: |
+    SELECT ID AS id,SKILL_TYPE AS skillType,SKILL_LEVEL_TYPE AS skillLevelType,SUB_SKILL_IDS AS subSkillIds
+    FROM SKILL WHERE ID=:skillId AND SKILL_GROUP_ID=:id AND ORG_ID=:orgId AND REMOVED=0 AND SKILL_TYPE IN (1,2) FOR UPDATE
+
+skill_group:
+  count: |
+    SELECT COUNT(*) AS total FROM SKILL_GROUP
+    WHERE ORG_ID=:orgId AND (:keyword='' OR GROUP_NAME LIKE :pattern OR DESCRIPTION LIKE :pattern)
+  list: |
+    SELECT g.ID AS id, g.GROUP_NAME AS groupName, g.DESCRIPTION AS description,
+      g.SORT_ORDER AS sortOrder, g.ENABLED AS enabled,
+      (SELECT COUNT(*) FROM SKILL s WHERE s.ORG_ID=g.ORG_ID AND s.SKILL_GROUP_ID=g.ID) AS skillCount
+    FROM SKILL_GROUP g WHERE g.ORG_ID=:orgId
+      AND (:keyword='' OR g.GROUP_NAME LIKE :pattern OR g.DESCRIPTION LIKE :pattern)
+    ORDER BY g.SORT_ORDER, g.ID DESC LIMIT :limit OFFSET :offset
+  bindings: |
+    SELECT b.SKILL_GROUP_ID AS skillGroupId, u.ID AS id, u.GROUP_NAME AS groupName, u.ENABLED AS enabled
+    FROM SKILL_GROUP_USER_GROUP b JOIN USER_GROUP u ON u.ID=b.USER_GROUP_ID AND u.ORG_ID=b.ORG_ID
+    WHERE b.ORG_ID=:orgId AND FIND_IN_SET(b.SKILL_GROUP_ID,:groupIds)>0 ORDER BY u.ID
+  find: |
+    SELECT ID AS id, ORG_ID AS orgId, GROUP_NAME AS groupName, ENABLED AS enabled FROM SKILL_GROUP
+    WHERE ID=:id AND ORG_ID=:orgId
+  lock: |
+    SELECT ID AS id, ORG_ID AS orgId, GROUP_NAME AS groupName, ENABLED AS enabled FROM SKILL_GROUP
+    WHERE ID=:id AND ORG_ID=:orgId FOR UPDATE
+  organization_lock: |
+    SELECT ID AS id FROM ORGANIZATION WHERE ID=:orgId AND ENABLED=1 AND REMOVED=0 FOR UPDATE
+  user_group_choices: |
+    SELECT ID AS id FROM USER_GROUP WHERE ORG_ID=:orgId AND FIND_IN_SET(ID,:userGroupIds)>0
+    ORDER BY ID FOR UPDATE
+  insert: |
+    INSERT INTO SKILL_GROUP (ORG_ID,GROUP_NAME,DESCRIPTION,SORT_ORDER,ENABLED,
+      CREATE_USER_ID,CREATE_USER_NAME,CREATE_TIME)
+    VALUES (:orgId,:groupName,:description,:sortOrder,:enabled,:createUserId,:createUserName,:createTime)
+  update: |
+    UPDATE SKILL_GROUP SET GROUP_NAME=:groupName,DESCRIPTION=:description,SORT_ORDER=:sortOrder,
+      ENABLED=:enabled,UPDATE_USER_ID=:updateUserId,UPDATE_USER_NAME=:updateUserName,UPDATE_TIME=:updateTime
+    WHERE ID=:id AND ORG_ID=:orgId
+  duplicate: |
+    SELECT ID AS id FROM SKILL_GROUP WHERE ORG_ID=:orgId AND GROUP_NAME=:groupName AND ID<>:excludeId
+  clear_bindings: |
+    DELETE FROM SKILL_GROUP_USER_GROUP WHERE ORG_ID=:orgId AND SKILL_GROUP_ID=:id
+  insert_binding: |
+    INSERT INTO SKILL_GROUP_USER_GROUP (ORG_ID,SKILL_GROUP_ID,USER_GROUP_ID) VALUES (:orgId,:id,:userGroupId)
+  references: |
+    SELECT ID AS id FROM SKILL WHERE ORG_ID=:orgId AND SKILL_GROUP_ID=:id ORDER BY ID FOR UPDATE
+  delete: |
+    DELETE FROM SKILL_GROUP WHERE ID=:id AND ORG_ID=:orgId
+  skill_count: |
+    SELECT COUNT(*) AS total FROM SKILL s
+    WHERE s.ORG_ID=:orgId AND s.SKILL_GROUP_ID=:id AND s.REMOVED=0 AND s.SKILL_TYPE IN (1,2)
+      AND (:activeOnly=0 OR s.ENABLED=1)
+      AND (:keyword='' OR s.SKILL_NAME LIKE :pattern OR s.SKILL_DESCRIPTION LIKE :pattern)
+  skill_list: |
+    SELECT s.ID AS id,s.SKILL_NAME AS skillName,s.SKILL_DESCRIPTION AS skillDescription,
+      s.SKILL_TYPE AS skillType,s.PROJECT_GROUP_ID AS projectGroupId,s.SKILL_LEVEL_TYPE AS skillLevelType,s.SUB_SKILL_IDS AS subSkillIds,
+      s.RULE_CONTENT AS ruleContent,s.ENABLED AS enabled,s.SKILL_GROUP_ID AS accessGroupId,
+      s.INTENT_LLM_ID AS intentLlmId,s.TASK_LLM_ID AS taskLlmId,s.EXECUT_LLM_ID AS executLlmId,s.SUMMARY_LLM_ID AS summaryLlmId,
+      s.TEMPERATURE AS temperature,s.TABLE_IDS AS tableIds,s.TENANT_IDS AS tenantIds,
+      p.GROUP_NAME AS projectSkillGroupName
+    FROM SKILL s LEFT JOIN PROJECT_GROUP p ON p.ID=s.PROJECT_GROUP_ID AND p.ORG_ID=s.ORG_ID
+    WHERE s.ORG_ID=:orgId AND s.SKILL_GROUP_ID=:id AND s.REMOVED=0 AND s.SKILL_TYPE IN (1,2)
+      AND (:activeOnly=0 OR s.ENABLED=1)
+      AND (:keyword='' OR s.SKILL_NAME LIKE :pattern OR s.SKILL_DESCRIPTION LIKE :pattern)
+    ORDER BY s.ID DESC LIMIT :limit OFFSET :offset
+  option_count: |
+    SELECT COUNT(*) AS total FROM SKILL s WHERE s.ORG_ID=:orgId AND s.REMOVED=0 AND s.SKILL_TYPE IN (1,2)
+      AND s.SKILL_GROUP_ID IS NULL AND (:keyword='' OR s.SKILL_NAME LIKE :pattern OR s.SKILL_DESCRIPTION LIKE :pattern)
+  options: |
+    SELECT s.ID AS id,s.SKILL_NAME AS skillName,s.SKILL_DESCRIPTION AS skillDescription,
+      s.SKILL_TYPE AS skillType,s.SKILL_LEVEL_TYPE AS skillLevelType,s.ENABLED AS enabled,
+      p.GROUP_NAME AS projectSkillGroupName
+    FROM SKILL s LEFT JOIN PROJECT_GROUP p ON p.ID=s.PROJECT_GROUP_ID AND p.ORG_ID=s.ORG_ID
+    WHERE s.ORG_ID=:orgId AND s.REMOVED=0 AND s.SKILL_TYPE IN (1,2) AND s.SKILL_GROUP_ID IS NULL
+      AND (:keyword='' OR s.SKILL_NAME LIKE :pattern OR s.SKILL_DESCRIPTION LIKE :pattern)
+    ORDER BY s.ID DESC LIMIT :limit OFFSET :offset
+  skill_lock: |
+    SELECT ID AS id,SKILL_GROUP_ID AS accessGroupId FROM SKILL
+    WHERE ORG_ID=:orgId AND REMOVED=0 AND SKILL_TYPE IN (1,2) AND FIND_IN_SET(ID,:skillIds)>0 ORDER BY ID FOR UPDATE
+  attach: |
+    UPDATE SKILL SET SKILL_GROUP_ID=:id,UPDATE_USER_ID=:updateUserId,
+      UPDATE_USER_NAME=:updateUserName,UPDATE_TIME=:updateTime
+    WHERE ORG_ID=:orgId AND FIND_IN_SET(ID,:skillIds)>0 AND SKILL_GROUP_ID IS NULL AND SKILL_TYPE IN (1,2) AND REMOVED=0
+  detach: |
+    UPDATE SKILL SET SKILL_GROUP_ID=NULL,UPDATE_USER_ID=:updateUserId,
+      UPDATE_USER_NAME=:updateUserName,UPDATE_TIME=:updateTime
+    WHERE ORG_ID=:orgId AND FIND_IN_SET(ID,:skillIds)>0 AND SKILL_GROUP_ID=:id AND SKILL_TYPE IN (1,2) AND REMOVED=0
+  create_skill: |
+    INSERT INTO SKILL (ORG_ID,SKILL_GROUP_ID,SKILL_NAME,SKILL_DESCRIPTION,SKILL_TYPE,SKILL_LEVEL_TYPE,
+      SUB_SKILL_IDS,RULE_CONTENT,ENABLED,REMOVED,CREATE_USER_ID,CREATE_USER_NAME,CREATE_TIME)
+    VALUES (:orgId,:id,:skillName,:skillDescription,1,:skillLevelType,:subSkillIds,:ruleContent,:enabled,0,
+      :createUserId,:createUserName,:createTime)
+  accessible_skill_ids: |
+    SELECT s.ID AS id FROM SKILL s
+    WHERE s.ORG_ID=:orgId AND FIND_IN_SET(s.ID,:skillIds)>0 AND s.REMOVED=0 AND s.ENABLED=1
+      AND (s.SKILL_GROUP_ID IS NULL OR EXISTS (
+        SELECT 1 FROM SKILL_GROUP g WHERE g.ID=s.SKILL_GROUP_ID AND g.ORG_ID=s.ORG_ID AND g.ENABLED=1
+          AND (:internal=1 OR EXISTS (
+            SELECT 1 FROM SKILL_GROUP_USER_GROUP b
+            JOIN USER_GROUP u ON u.ID=b.USER_GROUP_ID AND u.ORG_ID=b.ORG_ID AND u.ENABLED=1
+            JOIN USER_INFO_WB w ON w.GROUP_ID=u.ID AND w.ID=:userId AND w.ENABLED=1
+            WHERE b.ORG_ID=s.ORG_ID AND b.SKILL_GROUP_ID=g.ID
+          ))
+      ))
+  usable_groups: |
+    SELECT g.ID AS id,g.GROUP_NAME AS groupName,g.DESCRIPTION AS description FROM SKILL_GROUP g
+    WHERE g.ORG_ID=:orgId AND g.ENABLED=1 AND EXISTS (
+      SELECT 1 FROM SKILL_GROUP_USER_GROUP b
+      JOIN USER_GROUP u ON u.ID=b.USER_GROUP_ID AND u.ORG_ID=b.ORG_ID AND u.ENABLED=1
+      JOIN USER_INFO_WB w ON w.GROUP_ID=u.ID AND w.ID=:userId AND w.ENABLED=1
+      WHERE b.ORG_ID=g.ORG_ID AND b.SKILL_GROUP_ID=g.ID
+    ) ORDER BY g.SORT_ORDER,g.ID
+
+template_bindings:
+  count: |
+    SELECT COUNT(*) AS total FROM SKILL
+    WHERE ORG_ID=:orgId AND TEMPLATE_ID=:templateId AND SKILL_TYPE IN (1,2) AND REMOVED=0
+  list: |
+    SELECT s.ID AS id,s.SKILL_NAME AS skillName,s.SKILL_TYPE AS skillType,s.ENABLED AS enabled,
+      s.PROJECT_GROUP_ID AS skillGroupId,g.GROUP_NAME AS skillGroupName
+    FROM SKILL s LEFT JOIN PROJECT_GROUP g ON g.ID=s.PROJECT_GROUP_ID AND g.ORG_ID=s.ORG_ID
+    WHERE s.ORG_ID=:orgId AND s.TEMPLATE_ID=:templateId AND s.SKILL_TYPE IN (1,2) AND s.REMOVED=0
+    ORDER BY s.SKILL_TYPE,s.ID DESC LIMIT :limit OFFSET :offset
+
+public_skill:
+  count: |
+    SELECT COUNT(*) AS total
+    FROM SKILL
+    WHERE SKILL_TYPE = 1
+      AND ORG_ID = :orgId
+      AND REMOVED = 0
+      AND (
+        :keyword IS NULL
+        OR SKILL_NAME LIKE CONCAT('%', :keyword, '%')
+        OR COALESCE(SKILL_DESCRIPTION, '') LIKE CONCAT('%', :keyword, '%')
+        OR RULE_CONTENT LIKE CONCAT('%', :keyword, '%')
+      )
+      AND (:enabled IS NULL OR ENABLED = :enabled)
+      AND (:skillLevelType IS NULL OR SKILL_LEVEL_TYPE = :skillLevelType)
+
+  list: |
+    SELECT
+      ID AS id,
+      SKILL_NAME AS skillName,
+      SKILL_DESCRIPTION AS skillDescription,
+      SKILL_LEVEL_TYPE AS skillLevelType,
+      SUB_SKILL_IDS AS subSkillIds,
+      TEMPLATE_ID AS templateId,
+      RULE_CONTENT AS ruleContent,
+      ENABLED AS enabled
+    FROM SKILL
+    WHERE SKILL_TYPE = 1
+      AND ORG_ID = :orgId
+      AND REMOVED = 0
+      AND (
+        :keyword IS NULL
+        OR SKILL_NAME LIKE CONCAT('%', :keyword, '%')
+        OR COALESCE(SKILL_DESCRIPTION, '') LIKE CONCAT('%', :keyword, '%')
+        OR RULE_CONTENT LIKE CONCAT('%', :keyword, '%')
+      )
+      AND (:enabled IS NULL OR ENABLED = :enabled)
+      AND (:skillLevelType IS NULL OR SKILL_LEVEL_TYPE = :skillLevelType)
+    ORDER BY COALESCE(UPDATE_TIME, CREATE_TIME) DESC, ID DESC
+    LIMIT :limit OFFSET :offset
+
+  find_duplicate_name: |
+    SELECT ID AS id
+    FROM SKILL
+    WHERE SKILL_TYPE = 1
+      AND ORG_ID = :orgId
+      AND SKILL_NAME = :skillName
+      AND REMOVED = 0
+      AND ID <> :excludeId
+    LIMIT 1
+
+  insert: |
+    INSERT INTO SKILL (
+      ORG_ID,
+      PROJECT_GROUP_ID,
+      TEMPLATE_ID,
+      SKILL_NAME,
+      SKILL_DESCRIPTION,
+      SKILL_TYPE,
+      SKILL_LEVEL_TYPE,
+      RULE_CONTENT,
+      SUB_SKILL_IDS,
+      USER_ID,
+      ENABLED,
+      REMOVED,
+      CREATE_USER_ID,
+      CREATE_USER_NAME,
+      CREATE_TIME
+    ) VALUES (
+      :orgId,
+      NULL,
+      :templateId,
+      :skillName,
+      :skillDescription,
+      1,
+      :skillLevelType,
+      :ruleContent,
+      :subSkillIds,
+      NULL,
+      :enabled,
+      0,
+      :createUserId,
+      :createUserName,
+      :createTime
+    )
+
+  update: |
+    UPDATE SKILL
+    SET SKILL_NAME = :skillName,
+      TEMPLATE_ID = CASE WHEN :updateTemplate=1 THEN :templateId ELSE TEMPLATE_ID END,
+      SKILL_DESCRIPTION = :skillDescription,
+      SKILL_LEVEL_TYPE = :skillLevelType,
+      RULE_CONTENT = :ruleContent,
+      SUB_SKILL_IDS = :subSkillIds,
+      ENABLED = :enabled,
+      UPDATE_USER_ID = :updateUserId,
+      UPDATE_USER_NAME = :updateUserName,
+      UPDATE_TIME = :updateTime
+    WHERE ID = :id
+      AND ORG_ID = :orgId
+      AND SKILL_TYPE = 1
+      AND REMOVED = 0
+
+  find_by_id: |
+    SELECT ID AS id,
+      SKILL_LEVEL_TYPE AS skillLevelType,
+      SUB_SKILL_IDS AS subSkillIds,
+      (SELECT COUNT(*) FROM USER_MCP_SKILL b WHERE b.ORG_ID = SKILL.ORG_ID AND
+      (b.SKILL_ID = SKILL.ID OR EXISTS (SELECT 1 FROM SKILL p WHERE p.ID = b.SKILL_ID
+      AND p.ORG_ID = SKILL.ORG_ID AND p.SKILL_TYPE = SKILL.SKILL_TYPE AND p.REMOVED = 0
+      AND FIND_IN_SET(SKILL.ID, p.SUB_SKILL_IDS) > 0
+      AND (p.SKILL_TYPE <> 3 OR p.USER_ID = SKILL.USER_ID)
+      AND p.PROJECT_GROUP_ID <=> SKILL.PROJECT_GROUP_ID))) AS mcpBindingCount
+    FROM SKILL
+    WHERE ID = :id
+      AND ORG_ID = :orgId
+      AND SKILL_TYPE = 1
+      AND REMOVED = 0
+
+  list_sub_skill_options: |
+    SELECT ID AS id,
+      SKILL_NAME AS skillName,
+      SKILL_DESCRIPTION AS skillDescription,
+      ENABLED AS enabled
+    FROM SKILL
+    WHERE SKILL_TYPE = 1
+      AND ORG_ID = :orgId
+      AND SKILL_LEVEL_TYPE = 2
+      AND ENABLED = 1
+      AND REMOVED = 0
+    ORDER BY COALESCE(UPDATE_TIME, CREATE_TIME) DESC, ID DESC
+
+  physical_delete: |
+    DELETE FROM SKILL
+    WHERE ID = :id
+      AND ORG_ID = :orgId
+      AND SKILL_TYPE = 1
+      AND REMOVED = 0
+
+share_schema:
+  create: |
+    CREATE TABLE IF NOT EXISTS SKILL_SHARE (
+      ID BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+      ORG_ID BIGINT NOT NULL COMMENT '所属公司ORGANIZATION.ID',
+      SOURCE_SKILL_ID INT NOT NULL COMMENT '来源SKILL.ID',
+      SOURCE_USER_ID BIGINT NOT NULL COMMENT '分享人USER_INFO_WB.ID',
+      TARGET_USER_ID BIGINT NOT NULL COMMENT '接收人USER_INFO_WB.ID',
+      SKILL_NAME VARCHAR(100) NOT NULL COMMENT '分享时技能名称快照',
+      SKILL_DESCRIPTION VARCHAR(255) NULL COMMENT '分享时技能描述快照',
+      SKILL_TYPE TINYINT NOT NULL DEFAULT 3 COMMENT '技能类型，固定为3',
+      SKILL_LEVEL_TYPE TINYINT NOT NULL DEFAULT 1 COMMENT '技能层级类型：1主技能，2子技能',
+      SUB_SKILLS_JSON LONGTEXT NULL COMMENT '关联子技能快照JSON',
+      RULE_CONTENT TEXT NOT NULL COMMENT '分享时规则内容快照',
+      ENABLED TINYINT NOT NULL DEFAULT 1 COMMENT '分享时技能启用状态快照',
+      RECEIVE_STATUS TINYINT NOT NULL DEFAULT 0 COMMENT '接收状态：0待接收，1已接收，2已拒绝，3已撤回',
+      ACCEPTED_SKILL_ID INT NULL COMMENT '接收后新增的SKILL.ID',
+      RESPONSE_TIME VARCHAR(55) NULL COMMENT '接收、拒绝或撤回时间',
+      CREATE_USER_ID BIGINT NULL COMMENT '创建人ID',
+      CREATE_USER_NAME VARCHAR(55) NULL COMMENT '创建人姓名',
+      CREATE_TIME VARCHAR(55) NULL COMMENT '创建时间',
+      UPDATE_USER_ID BIGINT NULL COMMENT '更新人ID',
+      UPDATE_USER_NAME VARCHAR(55) NULL COMMENT '更新人姓名',
+      UPDATE_TIME VARCHAR(55) NULL COMMENT '更新时间',
+      PRIMARY KEY (ID),
+      KEY IDX_SKILL_SHARE_ORG (ORG_ID, RECEIVE_STATUS),
+      KEY IDX_SKILL_SHARE_SOURCE_SKILL (SOURCE_SKILL_ID),
+      KEY IDX_SKILL_SHARE_SOURCE_USER (SOURCE_USER_ID, RECEIVE_STATUS),
+      KEY IDX_SKILL_SHARE_TARGET_STATUS (TARGET_USER_ID, RECEIVE_STATUS),
+      KEY IDX_SKILL_SHARE_ACCEPTED_SKILL (ACCEPTED_SKILL_ID)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='私有技能分享与接收审批'
+
+library_schema:
+  create: |
+    CREATE TABLE IF NOT EXISTS SKILL_LIBRARY (
+      ID BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+      ORG_ID BIGINT NOT NULL COMMENT '所属公司ORGANIZATION.ID',
+      SOURCE_SKILL_ID INT NOT NULL COMMENT '来源SKILL.ID',
+      PUBLISHER_USER_ID BIGINT NOT NULL COMMENT '发布人USER_INFO_WB.ID',
+      GROUP_ID BIGINT NOT NULL COMMENT '发布人所属USER_GROUP.ID',
+      SKILL_NAME VARCHAR(100) NOT NULL COMMENT '发布时技能名称快照',
+      SKILL_DESCRIPTION VARCHAR(255) NULL COMMENT '发布时技能描述快照',
+      SKILL_TYPE TINYINT NOT NULL DEFAULT 3 COMMENT '技能类型，固定为3',
+      SKILL_LEVEL_TYPE TINYINT NOT NULL DEFAULT 1 COMMENT '技能层级类型：1主技能，2子技能',
+      SUB_SKILLS_JSON LONGTEXT NULL COMMENT '关联子技能快照JSON',
+      RULE_CONTENT TEXT NOT NULL COMMENT '发布时规则内容快照',
+      ENABLED TINYINT NOT NULL DEFAULT 1 COMMENT '是否可被组内用户添加',
+      CREATE_USER_ID BIGINT NULL COMMENT '创建人ID',
+      CREATE_USER_NAME VARCHAR(55) NULL COMMENT '创建人姓名',
+      CREATE_TIME VARCHAR(55) NULL COMMENT '创建时间',
+      UPDATE_USER_ID BIGINT NULL COMMENT '更新人ID',
+      UPDATE_USER_NAME VARCHAR(55) NULL COMMENT '更新人姓名',
+      UPDATE_TIME VARCHAR(55) NULL COMMENT '更新时间',
+      PRIMARY KEY (ID),
+      KEY IDX_SKILL_LIBRARY_ORG (ORG_ID, GROUP_ID),
+      UNIQUE KEY UK_SKILL_LIBRARY_SOURCE_GROUP (SOURCE_SKILL_ID, GROUP_ID),
+      KEY IDX_SKILL_LIBRARY_GROUP_ENABLED (GROUP_ID, ENABLED),
+      KEY IDX_SKILL_LIBRARY_PUBLISHER (PUBLISHER_USER_ID)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户组私有技能库'
+
+private_skill:
+  count: |
+    SELECT COUNT(*) AS total
+    FROM SKILL AS skill
+    INNER JOIN USER_INFO_WB AS external_user ON external_user.ID = skill.USER_ID
+    INNER JOIN USER_GROUP AS user_group ON user_group.ID = external_user.GROUP_ID
+    WHERE skill.SKILL_TYPE = 3
+      AND skill.ORG_ID = :orgId
+      AND user_group.ORG_ID = :orgId
+      AND skill.REMOVED = 0
+      AND (:scopeUserId IS NULL OR skill.USER_ID = :scopeUserId)
+      AND (:skillName IS NULL OR skill.SKILL_NAME LIKE CONCAT('%', :skillName, '%'))
+      AND (:userName IS NULL OR external_user.REAL_NAME LIKE CONCAT('%', :userName, '%'))
+      AND (:groupId IS NULL OR external_user.GROUP_ID = :groupId)
+      AND (:account IS NULL OR external_user.ACCOUNT LIKE CONCAT('%', :account, '%'))
+      AND (:enabled IS NULL OR skill.ENABLED = :enabled)
+      AND (:skillLevelType IS NULL OR skill.SKILL_LEVEL_TYPE = :skillLevelType)
+
+  list: |
+    SELECT
+      skill.ID AS id,
+      skill.SKILL_NAME AS skillName,
+      skill.SKILL_DESCRIPTION AS skillDescription,
+      skill.SKILL_LEVEL_TYPE AS skillLevelType,
+      skill.SUB_SKILL_IDS AS subSkillIds,
+      skill.RULE_CONTENT AS ruleContent,
+      skill.USER_ID AS userId,
+      external_user.REAL_NAME AS userName,
+      external_user.ACCOUNT AS account,
+      external_user.GROUP_ID AS groupId,
+      user_group.GROUP_NAME AS groupName,
+      skill.ENABLED AS enabled,
+      skill.CREATE_TIME AS createTime,
+      skill.UPDATE_TIME AS updateTime
+    FROM SKILL AS skill
+    INNER JOIN USER_INFO_WB AS external_user ON external_user.ID = skill.USER_ID
+    INNER JOIN USER_GROUP AS user_group ON user_group.ID = external_user.GROUP_ID
+    WHERE skill.SKILL_TYPE = 3
+      AND skill.ORG_ID = :orgId
+      AND user_group.ORG_ID = :orgId
+      AND skill.REMOVED = 0
+      AND (:scopeUserId IS NULL OR skill.USER_ID = :scopeUserId)
+      AND (:skillName IS NULL OR skill.SKILL_NAME LIKE CONCAT('%', :skillName, '%'))
+      AND (:userName IS NULL OR external_user.REAL_NAME LIKE CONCAT('%', :userName, '%'))
+      AND (:groupId IS NULL OR external_user.GROUP_ID = :groupId)
+      AND (:account IS NULL OR external_user.ACCOUNT LIKE CONCAT('%', :account, '%'))
+      AND (:enabled IS NULL OR skill.ENABLED = :enabled)
+      AND (:skillLevelType IS NULL OR skill.SKILL_LEVEL_TYPE = :skillLevelType)
+    ORDER BY COALESCE(skill.UPDATE_TIME, skill.CREATE_TIME) DESC, skill.ID DESC
+    LIMIT :limit OFFSET :offset
+
+  find_active_user: |
+    SELECT external_user.ID AS id
+    FROM USER_INFO_WB AS external_user
+    INNER JOIN USER_GROUP AS user_group ON user_group.ID = external_user.GROUP_ID
+    WHERE external_user.ID = :userId AND external_user.ENABLED = 1 AND user_group.ORG_ID = :orgId
+    LIMIT 1
+
+  find_users_by_ids: |
+    SELECT external_user.ID AS id
+    FROM USER_INFO_WB AS external_user
+    INNER JOIN USER_GROUP AS user_group ON user_group.ID = external_user.GROUP_ID
+    WHERE external_user.ENABLED = 1 AND user_group.ORG_ID = :orgId AND FIND_IN_SET(external_user.ID, :ids) > 0
+    ORDER BY external_user.ID ASC
+
+  find_by_id: |
+    SELECT
+      ID AS id,
+      SKILL_NAME AS skillName,
+      SKILL_DESCRIPTION AS skillDescription,
+      SKILL_LEVEL_TYPE AS skillLevelType,
+      SUB_SKILL_IDS AS subSkillIds,
+      RULE_CONTENT AS ruleContent,
+      USER_ID AS userId,
+      ENABLED AS enabled,
+      (SELECT COUNT(*) FROM USER_MCP_SKILL b WHERE b.ORG_ID = SKILL.ORG_ID AND
+      (b.SKILL_ID = SKILL.ID OR EXISTS (SELECT 1 FROM SKILL p WHERE p.ID = b.SKILL_ID
+      AND p.ORG_ID = SKILL.ORG_ID AND p.SKILL_TYPE = SKILL.SKILL_TYPE AND p.REMOVED = 0
+      AND FIND_IN_SET(SKILL.ID, p.SUB_SKILL_IDS) > 0
+      AND (p.SKILL_TYPE <> 3 OR p.USER_ID = SKILL.USER_ID)
+      AND p.PROJECT_GROUP_ID <=> SKILL.PROJECT_GROUP_ID))) AS mcpBindingCount
+    FROM SKILL
+    WHERE ID = :id AND ORG_ID = :orgId AND SKILL_TYPE = 3 AND REMOVED = 0
+    LIMIT 1
+
+  find_duplicate_name: |
+    SELECT ID AS id
+    FROM SKILL
+    WHERE USER_ID = :userId
+      AND ORG_ID = :orgId
+      AND SKILL_TYPE = 3
+      AND SKILL_NAME = :skillName
+      AND REMOVED = 0
+      AND ID <> :excludeId
+    LIMIT 1
+
+  list_sub_skill_options: |
+    SELECT ID AS id,
+      SKILL_NAME AS skillName,
+      SKILL_DESCRIPTION AS skillDescription,
+      RULE_CONTENT AS ruleContent,
+      ENABLED AS enabled
+    FROM SKILL
+    WHERE USER_ID = :userId
+      AND ORG_ID = :orgId
+      AND SKILL_TYPE = 3
+      AND SKILL_LEVEL_TYPE = 2
+      AND ENABLED = 1
+      AND REMOVED = 0
+    ORDER BY COALESCE(UPDATE_TIME, CREATE_TIME) DESC, ID DESC
+
+  list_names_by_user: |
+    SELECT SKILL_NAME AS skillName
+    FROM SKILL
+    WHERE USER_ID = :userId
+      AND ORG_ID = :orgId
+      AND SKILL_TYPE = 3
+      AND REMOVED = 0
+
+  list_bundle_children: |
+    SELECT ID AS sourceSkillId,
+      SKILL_NAME AS skillName,
+      SKILL_DESCRIPTION AS skillDescription,
+      SKILL_LEVEL_TYPE AS skillLevelType,
+      RULE_CONTENT AS ruleContent,
+      ENABLED AS enabled
+    FROM SKILL
+    WHERE USER_ID = :userId
+      AND ORG_ID = :orgId
+      AND SKILL_TYPE = 3
+      AND SKILL_LEVEL_TYPE = 2
+      AND REMOVED = 0
+      AND FIND_IN_SET(ID, :subSkillIds) > 0
+    ORDER BY FIND_IN_SET(ID, :subSkillIds)
+
+  insert: |
+    INSERT INTO SKILL (
+      ORG_ID, PROJECT_GROUP_ID, SKILL_NAME, SKILL_DESCRIPTION, SKILL_TYPE,
+      SKILL_LEVEL_TYPE, RULE_CONTENT, TABLE_IDS, SUB_SKILL_IDS, USER_ID, ENABLED, REMOVED,
+      CREATE_USER_ID, CREATE_USER_NAME, CREATE_TIME
+    ) VALUES (
+      :orgId, :projectGroupId, :skillName, :skillDescription, :skillType,
+      :skillLevelType, :ruleContent, :tableIds, :subSkillIds, :userId, :enabled, 0,
+      :createUserId, :createUserName, :createTime
+    )
+
+  update: |
+    UPDATE SKILL
+    SET SKILL_NAME = :skillName,
+        SKILL_DESCRIPTION = :skillDescription,
+        SKILL_LEVEL_TYPE = :skillLevelType,
+        RULE_CONTENT = :ruleContent,
+        SUB_SKILL_IDS = :subSkillIds,
+        ENABLED = :enabled,
+        UPDATE_USER_ID = :updateUserId,
+        UPDATE_USER_NAME = :updateUserName,
+        UPDATE_TIME = :updateTime
+    WHERE ID = :id AND ORG_ID = :orgId AND USER_ID = :userId AND SKILL_TYPE = 3 AND REMOVED = 0
+
+  physical_delete: |
+    DELETE FROM SKILL
+    WHERE ID = :id AND ORG_ID = :orgId AND USER_ID = :userId AND SKILL_TYPE = 3
+
+skill_hierarchy:
+  remove_reference: |
+    UPDATE SKILL
+    SET SUB_SKILL_IDS = NULLIF(
+        TRIM(BOTH ',' FROM REPLACE(
+          CONCAT(',', COALESCE(SUB_SKILL_IDS, ''), ','),
+          CONCAT(',', :removedSkillId, ','),
+          ','
+        )),
+        ''
+      ),
+      UPDATE_USER_ID = :updateUserId,
+      UPDATE_USER_NAME = :updateUserName,
+      UPDATE_TIME = :updateTime
+    WHERE SKILL_LEVEL_TYPE = 1
+      AND ORG_ID = :orgId
+      AND REMOVED = 0
+      AND FIND_IN_SET(CAST(:removedSkillId AS CHAR), SUB_SKILL_IDS) > 0
+
+share_target:
+  count: |
+    SELECT COUNT(*) AS total
+    FROM USER_INFO_WB AS external_user
+    INNER JOIN USER_GROUP AS user_group
+      ON user_group.ID = external_user.GROUP_ID AND user_group.ENABLED = 1
+    WHERE external_user.ENABLED = 1
+      AND user_group.ORG_ID = :orgId
+      AND external_user.ID <> :excludeUserId
+      AND (:groupId IS NULL OR external_user.GROUP_ID = :groupId)
+      AND (
+        :keyword IS NULL
+        OR external_user.REAL_NAME LIKE CONCAT('%', :keyword, '%')
+        OR external_user.ACCOUNT LIKE CONCAT('%', :keyword, '%')
+        OR user_group.GROUP_NAME LIKE CONCAT('%', :keyword, '%')
+      )
+
+  list: |
+    SELECT
+      external_user.ID AS id,
+      external_user.REAL_NAME AS realName,
+      external_user.ACCOUNT AS account,
+      external_user.GROUP_ID AS groupId,
+      user_group.GROUP_NAME AS groupName
+    FROM USER_INFO_WB AS external_user
+    INNER JOIN USER_GROUP AS user_group
+      ON user_group.ID = external_user.GROUP_ID AND user_group.ENABLED = 1
+    WHERE external_user.ENABLED = 1
+      AND user_group.ORG_ID = :orgId
+      AND external_user.ID <> :excludeUserId
+      AND (:groupId IS NULL OR external_user.GROUP_ID = :groupId)
+      AND (
+        :keyword IS NULL
+        OR external_user.REAL_NAME LIKE CONCAT('%', :keyword, '%')
+        OR external_user.ACCOUNT LIKE CONCAT('%', :keyword, '%')
+        OR user_group.GROUP_NAME LIKE CONCAT('%', :keyword, '%')
+      )
+    ORDER BY user_group.GROUP_NAME ASC, external_user.REAL_NAME ASC, external_user.ID ASC
+    LIMIT :limit OFFSET :offset
+
+skill_share:
+  find_pending_duplicate: |
+    SELECT ID AS id
+    FROM SKILL_SHARE
+    WHERE ORG_ID = :orgId
+      AND SOURCE_SKILL_ID = :sourceSkillId
+      AND TARGET_USER_ID = :targetUserId
+      AND RECEIVE_STATUS = 0
+    LIMIT 1
+
+  insert: |
+    INSERT INTO SKILL_SHARE (
+      ORG_ID, SOURCE_SKILL_ID, SOURCE_USER_ID, TARGET_USER_ID,
+      SKILL_NAME, SKILL_DESCRIPTION, SKILL_TYPE, SKILL_LEVEL_TYPE, SUB_SKILLS_JSON, RULE_CONTENT, ENABLED,
+      RECEIVE_STATUS, CREATE_USER_ID, CREATE_USER_NAME, CREATE_TIME
+    ) VALUES (
+      :orgId, :sourceSkillId, :sourceUserId, :targetUserId,
+      :skillName, :skillDescription, 3, :skillLevelType, :subSkillsJson, :ruleContent, :enabled,
+      0, :createUserId, :createUserName, :createTime
+    )
+
+  count: |
+    SELECT COUNT(*) AS total
+    FROM SKILL_SHARE AS share_record
+    INNER JOIN USER_INFO_WB AS source_user ON source_user.ID = share_record.SOURCE_USER_ID
+    INNER JOIN USER_INFO_WB AS target_user ON target_user.ID = share_record.TARGET_USER_ID
+    WHERE share_record.ORG_ID = :orgId
+      AND (:sourceUserId IS NULL OR share_record.SOURCE_USER_ID = :sourceUserId)
+      AND (:targetUserId IS NULL OR share_record.TARGET_USER_ID = :targetUserId)
+      AND (:receiveStatus IS NULL OR share_record.RECEIVE_STATUS = :receiveStatus)
+      AND (
+        :keyword IS NULL
+        OR share_record.SKILL_NAME LIKE CONCAT('%', :keyword, '%')
+        OR source_user.REAL_NAME LIKE CONCAT('%', :keyword, '%')
+        OR target_user.REAL_NAME LIKE CONCAT('%', :keyword, '%')
+      )
+
+  list: |
+    SELECT
+      share_record.ID AS id,
+      share_record.SOURCE_SKILL_ID AS sourceSkillId,
+      share_record.SOURCE_USER_ID AS sourceUserId,
+      source_user.REAL_NAME AS sourceUserName,
+      share_record.TARGET_USER_ID AS targetUserId,
+      target_user.REAL_NAME AS targetUserName,
+      share_record.SKILL_NAME AS skillName,
+      share_record.SKILL_DESCRIPTION AS skillDescription,
+      share_record.SKILL_LEVEL_TYPE AS skillLevelType,
+      share_record.RULE_CONTENT AS ruleContent,
+      share_record.ENABLED AS enabled,
+      share_record.RECEIVE_STATUS AS receiveStatus,
+      share_record.ACCEPTED_SKILL_ID AS acceptedSkillId,
+      share_record.CREATE_TIME AS createTime,
+      share_record.RESPONSE_TIME AS responseTime
+    FROM SKILL_SHARE AS share_record
+    INNER JOIN USER_INFO_WB AS source_user ON source_user.ID = share_record.SOURCE_USER_ID
+    INNER JOIN USER_INFO_WB AS target_user ON target_user.ID = share_record.TARGET_USER_ID
+    WHERE share_record.ORG_ID = :orgId
+      AND (:sourceUserId IS NULL OR share_record.SOURCE_USER_ID = :sourceUserId)
+      AND (:targetUserId IS NULL OR share_record.TARGET_USER_ID = :targetUserId)
+      AND (:receiveStatus IS NULL OR share_record.RECEIVE_STATUS = :receiveStatus)
+      AND (
+        :keyword IS NULL
+        OR share_record.SKILL_NAME LIKE CONCAT('%', :keyword, '%')
+        OR source_user.REAL_NAME LIKE CONCAT('%', :keyword, '%')
+        OR target_user.REAL_NAME LIKE CONCAT('%', :keyword, '%')
+      )
+    ORDER BY COALESCE(share_record.UPDATE_TIME, share_record.CREATE_TIME) DESC, share_record.ID DESC
+    LIMIT :limit OFFSET :offset
+
+  find_for_update: |
+    SELECT
+      ID AS id,
+      SOURCE_SKILL_ID AS sourceSkillId,
+      SOURCE_USER_ID AS sourceUserId,
+      TARGET_USER_ID AS targetUserId,
+      SKILL_NAME AS skillName,
+      SKILL_DESCRIPTION AS skillDescription,
+      SKILL_LEVEL_TYPE AS skillLevelType,
+      SUB_SKILLS_JSON AS subSkillsJson,
+      RULE_CONTENT AS ruleContent,
+      ENABLED AS enabled,
+      RECEIVE_STATUS AS receiveStatus,
+      ACCEPTED_SKILL_ID AS acceptedSkillId
+    FROM SKILL_SHARE
+    WHERE ID = :id AND ORG_ID = :orgId
+    LIMIT 1
+    FOR UPDATE
+
+  update_status: |
+    UPDATE SKILL_SHARE
+    SET RECEIVE_STATUS = :receiveStatus,
+        ACCEPTED_SKILL_ID = :acceptedSkillId,
+        RESPONSE_TIME = :responseTime,
+        UPDATE_USER_ID = :updateUserId,
+        UPDATE_USER_NAME = :updateUserName,
+        UPDATE_TIME = :updateTime
+    WHERE ID = :id AND ORG_ID = :orgId AND RECEIVE_STATUS = 0
+
+  delete_pending_by_skill: |
+    DELETE FROM SKILL_SHARE
+    WHERE SOURCE_SKILL_ID = :id AND ORG_ID = :orgId AND RECEIVE_STATUS = 0
+
+retirement:
+  private_rows: |
+    SELECT * FROM SKILL WHERE SKILL_TYPE = 3 ORDER BY ORG_ID, ID FOR UPDATE
+  share_rows: |
+    SELECT * FROM SKILL_SHARE r WHERE SKILL_TYPE = 3 OR EXISTS
+      (SELECT 1 FROM SKILL s WHERE s.ORG_ID = r.ORG_ID AND s.SKILL_TYPE = 3
+        AND (s.ID = r.SOURCE_SKILL_ID OR s.ID = r.ACCEPTED_SKILL_ID)) FOR UPDATE
+  library_rows: |
+    SELECT * FROM SKILL_LIBRARY r WHERE SKILL_TYPE = 3 OR EXISTS
+      (SELECT 1 FROM SKILL s WHERE s.ORG_ID = r.ORG_ID AND s.SKILL_TYPE = 3 AND s.ID = r.SOURCE_SKILL_ID) FOR UPDATE
+  binding_rows: |
+    SELECT * FROM USER_MCP_SKILL b WHERE USER_ID > 0 OR EXISTS
+      (SELECT 1 FROM SKILL s WHERE s.ORG_ID = b.ORG_ID AND s.SKILL_TYPE = 3 AND s.ID = b.SKILL_ID) FOR UPDATE
+  agent_references: |
+    SELECT ID, ORG_ID, SKILL_IDS FROM AI_AGENT a WHERE EXISTS
+      (SELECT 1 FROM SKILL s WHERE s.ORG_ID = a.ORG_ID AND s.SKILL_TYPE = 3
+        AND FIND_IN_SET(CAST(s.ID AS CHAR), a.SKILL_IDS) > 0) FOR UPDATE
+  skill_references: |
+    SELECT ID, ORG_ID, SUB_SKILL_IDS FROM SKILL p WHERE p.SKILL_TYPE <> 3 AND EXISTS
+      (SELECT 1 FROM SKILL s WHERE s.ORG_ID = p.ORG_ID AND s.SKILL_TYPE = 3
+        AND FIND_IN_SET(CAST(s.ID AS CHAR), p.SUB_SKILL_IDS) > 0) FOR UPDATE
+  clear_agent_reference: |
+    UPDATE AI_AGENT SET SKILL_IDS = :remainingIds WHERE ID = :id AND ORG_ID = :orgId AND SKILL_IDS = :previousIds
+  clear_skill_reference: |
+    UPDATE SKILL SET SUB_SKILL_IDS = :remainingIds WHERE ID = :id AND ORG_ID = :orgId
+      AND SKILL_TYPE <> 3 AND SUB_SKILL_IDS = :previousIds
+  delete_shares: |
+    DELETE FROM SKILL_SHARE WHERE ORG_ID = :orgId AND FIND_IN_SET(CAST(ID AS CHAR), :ids) > 0
+  delete_library: |
+    DELETE FROM SKILL_LIBRARY WHERE ORG_ID = :orgId AND FIND_IN_SET(CAST(ID AS CHAR), :ids) > 0
+  delete_bindings: |
+    DELETE FROM USER_MCP_SKILL WHERE ORG_ID = :orgId AND FIND_IN_SET(CAST(ID AS CHAR), :ids) > 0
+  delete_private: |
+    DELETE FROM SKILL WHERE ORG_ID = :orgId AND SKILL_TYPE = 3 AND FIND_IN_SET(CAST(ID AS CHAR), :ids) > 0
+  protected_skills: |
+    SELECT * FROM SKILL WHERE SKILL_TYPE <> 3 ORDER BY ORG_ID, ID
+  protected_agents: |
+    SELECT * FROM AI_AGENT ORDER BY ORG_ID, ID
+  protected_mcp: |
+    SELECT * FROM USER_MCP_CONFIG ORDER BY ORG_ID, ID
+  protected_agent_shares: |
+    SELECT * FROM AGENT_SHARE ORDER BY ORG_ID, ID
+
+skill_library:
+  find_duplicate_source: |
+    SELECT ID AS id
+    FROM SKILL_LIBRARY
+    WHERE ORG_ID = :orgId AND SOURCE_SKILL_ID = :sourceSkillId AND GROUP_ID = :groupId
+    LIMIT 1
+
+  insert: |
+    INSERT INTO SKILL_LIBRARY (
+      ORG_ID, SOURCE_SKILL_ID, PUBLISHER_USER_ID, GROUP_ID,
+      SKILL_NAME, SKILL_DESCRIPTION, SKILL_TYPE, SKILL_LEVEL_TYPE, SUB_SKILLS_JSON, RULE_CONTENT, ENABLED,
+      CREATE_USER_ID, CREATE_USER_NAME, CREATE_TIME
+    ) VALUES (
+      :orgId, :sourceSkillId, :publisherUserId, :groupId,
+      :skillName, :skillDescription, 3, :skillLevelType, :subSkillsJson, :ruleContent, 1,
+      :createUserId, :createUserName, :createTime
+    )
+
+  count: |
+    SELECT COUNT(*) AS total
+    FROM SKILL_LIBRARY AS library
+    INNER JOIN USER_INFO_WB AS publisher ON publisher.ID = library.PUBLISHER_USER_ID
+    INNER JOIN USER_GROUP AS user_group ON user_group.ID = library.GROUP_ID
+    WHERE library.ORG_ID = :orgId
+      AND user_group.ORG_ID = :orgId
+      AND (:groupId IS NULL OR library.GROUP_ID = :groupId)
+      AND library.ENABLED = 1
+      AND (
+        :keyword IS NULL
+        OR library.SKILL_NAME LIKE CONCAT('%', :keyword, '%')
+        OR COALESCE(library.SKILL_DESCRIPTION, '') LIKE CONCAT('%', :keyword, '%')
+        OR publisher.REAL_NAME LIKE CONCAT('%', :keyword, '%')
+      )
+
+  list: |
+    SELECT
+      library.ID AS id,
+      library.SOURCE_SKILL_ID AS sourceSkillId,
+      library.PUBLISHER_USER_ID AS publisherUserId,
+      publisher.REAL_NAME AS publisherUserName,
+      library.GROUP_ID AS groupId,
+      user_group.GROUP_NAME AS groupName,
+      library.SKILL_NAME AS skillName,
+      library.SKILL_DESCRIPTION AS skillDescription,
+      library.SKILL_LEVEL_TYPE AS skillLevelType,
+      library.RULE_CONTENT AS ruleContent,
+      library.ENABLED AS enabled,
+      library.CREATE_TIME AS createTime
+    FROM SKILL_LIBRARY AS library
+    INNER JOIN USER_INFO_WB AS publisher ON publisher.ID = library.PUBLISHER_USER_ID
+    INNER JOIN USER_GROUP AS user_group ON user_group.ID = library.GROUP_ID
+    WHERE library.ORG_ID = :orgId
+      AND user_group.ORG_ID = :orgId
+      AND (:groupId IS NULL OR library.GROUP_ID = :groupId)
+      AND library.ENABLED = 1
+      AND (
+        :keyword IS NULL
+        OR library.SKILL_NAME LIKE CONCAT('%', :keyword, '%')
+        OR COALESCE(library.SKILL_DESCRIPTION, '') LIKE CONCAT('%', :keyword, '%')
+        OR publisher.REAL_NAME LIKE CONCAT('%', :keyword, '%')
+      )
+    ORDER BY library.CREATE_TIME DESC, library.ID DESC
+    LIMIT :limit OFFSET :offset
+
+  find_by_id: |
+    SELECT
+      ID AS id,
+      SOURCE_SKILL_ID AS sourceSkillId,
+      PUBLISHER_USER_ID AS publisherUserId,
+      GROUP_ID AS groupId,
+      SKILL_NAME AS skillName,
+      SKILL_DESCRIPTION AS skillDescription,
+      SKILL_LEVEL_TYPE AS skillLevelType,
+      SUB_SKILLS_JSON AS subSkillsJson,
+      RULE_CONTENT AS ruleContent,
+      ENABLED AS enabled
+    FROM SKILL_LIBRARY
+    WHERE ID = :id AND ORG_ID = :orgId
+    LIMIT 1
+
+  find_for_update: |
+    SELECT
+      ID AS id,
+      GROUP_ID AS groupId,
+      SKILL_NAME AS skillName,
+      SKILL_DESCRIPTION AS skillDescription,
+      SKILL_LEVEL_TYPE AS skillLevelType,
+      SUB_SKILLS_JSON AS subSkillsJson,
+      RULE_CONTENT AS ruleContent,
+      ENABLED AS enabled
+    FROM SKILL_LIBRARY
+    WHERE ID = :id AND ORG_ID = :orgId
+    LIMIT 1
+    FOR UPDATE
+
+  physical_delete: |
+    DELETE FROM SKILL_LIBRARY
+    WHERE ID = :id AND ORG_ID = :orgId

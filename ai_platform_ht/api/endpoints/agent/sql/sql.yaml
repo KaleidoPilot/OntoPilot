@@ -1,0 +1,315 @@
+agent:
+  physical_delete: |
+    DELETE FROM AI_AGENT WHERE ID = :id AND ORG_ID = :orgId AND AGENT_TYPE = 1
+  logical_delete: |
+    UPDATE AI_AGENT SET REMOVED = 1, ENABLED = 0,
+      UPDATE_USER_ID = :updateUserId, UPDATE_USER_NAME = :updateUserName, UPDATE_TIME = :updateTime
+    WHERE ID = :id AND ORG_ID = :orgId AND REMOVED = 0 AND AGENT_TYPE = 1
+  model_choice: |
+    SELECT ID AS id, TYPE AS type FROM MODEL_CONFIG
+    WHERE ORG_ID = :orgId AND ENABLED = 1 AND REMOVED = 0 AND API_KEY <> '' AND FIND_IN_SET(ID, :modelIds) > 0
+    ORDER BY ID FOR UPDATE
+  lock_for_update: |
+    SELECT ID AS id FROM AI_AGENT WHERE ID = :id AND ORG_ID = :orgId AND REMOVED = 0 AND AGENT_TYPE = 1 FOR UPDATE
+  insert: |
+    INSERT INTO AI_AGENT (ORG_ID, AGENT_TYPE, USER_ID, SHARE_USER_IDS, MCP_IDS, AGENT_NAME, SKILL_IDS, TEMPLATE_IDS, AGENT_DESCRIPTION, SYSTEM_PROMPT,
+      USER_PROMPT_TEMPLATE, TEMPERATURE, TOP_P, `KEY`, INTENT_LLM_ID, TASK_LLM_ID, EXECUT_LLM_ID,
+      SUMMARY_LLM_ID, TENANT_IDS, TENANT_TOP_K, TENANT_SCORE, ENABLED, REMOVED,
+      CREATE_USER_ID, CREATE_USER_NAME, CREATE_TIME)
+    VALUES (:orgId, :agentType, :userId, NULL, :mcpIds, :agentName, :skillIds, :templateIds, :agentDescription, :systemPrompt, :userPromptTemplate,
+      :temperature, :topP, :key, :intentLlmId, :taskLlmId, :executLlmId, :summaryLlmId,
+      :tenantIds, :tenantTopK, :tenantScore, :enabled, 0, :createUserId, :createUserName, :createTime)
+  update: |
+    UPDATE AI_AGENT SET AGENT_NAME = COALESCE(:agentName, AGENT_NAME),
+      SKILL_IDS = COALESCE(:skillIds, SKILL_IDS),
+      TEMPLATE_IDS = CASE WHEN :setTemplate = 1 THEN :templateIds ELSE TEMPLATE_IDS END,
+      AGENT_DESCRIPTION = COALESCE(:agentDescription, AGENT_DESCRIPTION),
+      MCP_IDS = COALESCE(:mcpIds, MCP_IDS),
+      SYSTEM_PROMPT = COALESCE(:systemPrompt, SYSTEM_PROMPT), USER_PROMPT_TEMPLATE = COALESCE(:userPromptTemplate, USER_PROMPT_TEMPLATE),
+      TEMPERATURE = COALESCE(:temperature, TEMPERATURE), TOP_P = COALESCE(:topP, TOP_P), `KEY` = COALESCE(:key, `KEY`),
+      INTENT_LLM_ID = CASE WHEN :setIntent = 1 THEN :intentLlmId ELSE INTENT_LLM_ID END,
+      TASK_LLM_ID = CASE WHEN :setTask = 1 THEN :taskLlmId ELSE TASK_LLM_ID END,
+      EXECUT_LLM_ID = CASE WHEN :setExecut = 1 THEN :executLlmId ELSE EXECUT_LLM_ID END,
+      SUMMARY_LLM_ID = CASE WHEN :setSummary = 1 THEN :summaryLlmId ELSE SUMMARY_LLM_ID END,
+      TENANT_IDS = COALESCE(:tenantIds, TENANT_IDS), TENANT_TOP_K = COALESCE(:tenantTopK, TENANT_TOP_K),
+      TENANT_SCORE = COALESCE(:tenantScore, TENANT_SCORE), ENABLED = COALESCE(:enabled, ENABLED),
+      UPDATE_USER_ID = :updateUserId, UPDATE_USER_NAME = :updateUserName, UPDATE_TIME = :updateTime
+    WHERE ID = :id AND ORG_ID = :orgId AND REMOVED = 0 AND AGENT_TYPE = 1
+  find_active: |
+    SELECT ID AS id, ORG_ID AS orgId, AGENT_TYPE AS agentType, USER_ID AS userId,
+      MCP_IDS AS mcpIds, SKILL_IDS AS skillIds, TEMPLATE_IDS AS templateIds, SYSTEM_PROMPT AS systemPrompt,
+      TEMPERATURE AS temperature, TOP_P AS topP,
+      INTENT_LLM_ID AS intentLlmId, TASK_LLM_ID AS taskLlmId, EXECUT_LLM_ID AS executLlmId,
+      SUMMARY_LLM_ID AS summaryLlmId, TENANT_IDS AS tenantIds, TENANT_TOP_K AS tenantTopK,
+      TENANT_SCORE AS tenantScore
+    FROM AI_AGENT WHERE `KEY` = :key AND ENABLED = 1 AND REMOVED = 0
+      AND (:orgId IS NULL OR ORG_ID = :orgId) AND (:agentId IS NULL OR ID = :agentId)
+      AND (AGENT_TYPE = 1 OR :agentId IS NOT NULL) LIMIT 1
+  admin_list: |
+    SELECT ID AS id, ORG_ID AS orgId, AGENT_TYPE AS agentType, MCP_IDS AS mcpIds,
+      AGENT_NAME AS agentName, SKILL_IDS AS skillIds, TEMPLATE_IDS AS templateIds, AGENT_DESCRIPTION AS agentDescription,
+      SYSTEM_PROMPT AS systemPrompt, USER_PROMPT_TEMPLATE AS userPromptTemplate,
+      TEMPERATURE AS temperature, TOP_P AS topP, `KEY` AS `key`,
+      INTENT_LLM_ID AS intentLlmId, TASK_LLM_ID AS taskLlmId, EXECUT_LLM_ID AS executLlmId,
+      SUMMARY_LLM_ID AS summaryLlmId, TENANT_IDS AS tenantIds, TENANT_TOP_K AS tenantTopK,
+      TENANT_SCORE AS tenantScore, ENABLED AS enabled, CREATE_TIME AS createTime
+    FROM AI_AGENT WHERE ORG_ID = :orgId AND AGENT_TYPE = 1 AND REMOVED = 0
+      AND (:id IS NULL OR ID = :id) AND (:key IS NULL OR `KEY` = :key)
+      AND (:agentName IS NULL OR AGENT_NAME LIKE CONCAT('%', :agentName, '%'))
+      AND (:enabled IS NULL OR ENABLED = :enabled)
+    ORDER BY ID DESC LIMIT :limit OFFSET :offset
+  admin_count: |
+    SELECT COUNT(*) AS total FROM AI_AGENT
+    WHERE ORG_ID = :orgId AND AGENT_TYPE = 1 AND REMOVED = 0
+      AND (:id IS NULL OR ID = :id) AND (:key IS NULL OR `KEY` = :key)
+      AND (:agentName IS NULL OR AGENT_NAME LIKE CONCAT('%', :agentName, '%'))
+      AND (:enabled IS NULL OR ENABLED = :enabled)
+  export_public: |
+    SELECT ID AS id, ORG_ID AS orgId, AGENT_NAME AS agentName, SKILL_IDS AS skillIds,
+      TEMPLATE_IDS AS templateIds,
+      MCP_IDS AS mcpIds, AGENT_TYPE AS agentType, AGENT_DESCRIPTION AS agentDescription,
+      SYSTEM_PROMPT AS systemPrompt, USER_PROMPT_TEMPLATE AS userPromptTemplate,
+      TEMPERATURE AS temperature, TOP_P AS topP, `KEY` AS `key`,
+      INTENT_LLM_ID AS intentLlmId, TASK_LLM_ID AS taskLlmId, EXECUT_LLM_ID AS executLlmId,
+      SUMMARY_LLM_ID AS summaryLlmId, TENANT_IDS AS tenantIds, TENANT_TOP_K AS tenantTopK,
+      TENANT_SCORE AS tenantScore, ENABLED AS enabled, REMOVED AS removed,
+      CREATE_USER_ID AS createUserId, CREATE_USER_NAME AS createUserName, CREATE_TIME AS createTime,
+      UPDATE_USER_ID AS updateUserId, UPDATE_USER_NAME AS updateUserName, UPDATE_TIME AS updateTime
+    FROM AI_AGENT WHERE AGENT_TYPE = 1 AND ENABLED = 1 AND REMOVED = 0
+      AND (:orgId IS NULL OR ORG_ID = :orgId) AND (:id IS NULL OR ID = :id)
+      AND (:agentName IS NULL OR AGENT_NAME LIKE CONCAT('%', :agentName, '%'))
+    ORDER BY CREATE_TIME DESC
+
+  runtime_models: |
+    SELECT ID AS id, API_KEY AS apiKey, BASE_URL AS baseUrl, MODEL AS model
+    FROM MODEL_CONFIG WHERE ORG_ID = :orgId AND ENABLED = 1 AND REMOVED = 0
+      AND FIND_IN_SET(ID, :modelIds) > 0
+  template_options: |
+    SELECT ID AS id, SKILL_NAME AS skillName, DESCRIPTION AS description,
+      STATUS AS status, CREATE_TIME AS createTime
+    FROM TEMPLATE_GENERATION
+    WHERE ORG_ID = :orgId AND OWNER_TYPE = 'company' AND STATUS = 'ready'
+    ORDER BY CREATE_TIME DESC, ID DESC
+
+  bound_templates: |
+    SELECT ID AS id, SKILL_NAME AS skillName, DESCRIPTION AS description, STATUS AS status
+    FROM TEMPLATE_GENERATION
+    WHERE ORG_ID = :orgId AND OWNER_TYPE = 'company' AND STATUS = 'ready'
+      AND FIND_IN_SET(ID, :templateIds) > 0
+
+  # 技能引用的数据表 → 所属根项目组与沙箱配置
+  # 技能组内技能可跨项目组选表（PROJECT_GROUP_ID 可能为空），沙箱以数据表为准解析；
+  # 所有表必须归属同一个一级项目组的沙箱，否则无法确定唯一的客户数据源。
+  table_sandbox_binding: |
+    SELECT DISTINCT root.ID AS rootProjectGroupId, root.SANDBOX_CONFIG_ID AS sandboxConfigId
+    FROM TABLE_MANAGEMENT t
+    JOIN PROJECT_GROUP g ON g.ID = t.PROJECT_GROUP_ID AND g.ORG_ID = :orgId
+    JOIN PROJECT_GROUP root ON root.ID = COALESCE(g.PARENT_ID, g.ID) AND root.ORG_ID = :orgId
+    WHERE t.ENABLED = 1 AND t.REMOVED = 0
+      AND FIND_IN_SET(t.ID, :tableIds) > 0
+      AND g.ENABLED = 1 AND g.REMOVED = 0 AND g.LEVEL IN (0, 1)
+      AND root.LEVEL = 0 AND root.PARENT_ID IS NULL AND root.ENABLED = 1 AND root.REMOVED = 0
+
+  table_schema_snapshots: |
+    SELECT t.ID AS id, t.TABLE_NAME AS tableName, t.TABLE_CN_NAME AS tableCnName,
+      t.TABLE_COMMENT AS tableComment, t.COLUMNS_JSON AS columnsJson
+    FROM TABLE_MANAGEMENT t
+    JOIN PROJECT_GROUP g ON g.ID = t.PROJECT_GROUP_ID AND g.ORG_ID = :orgId
+    WHERE t.ENABLED = 1 AND t.REMOVED = 0 AND g.ENABLED = 1 AND g.REMOVED = 0
+      AND FIND_IN_SET(t.ID, :tableIds) > 0
+
+  live_table_columns: |
+    SELECT COLUMN_NAME AS columnName, COLUMN_TYPE AS columnType, COLUMN_COMMENT AS columnComment
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = :libraryName AND TABLE_NAME = :physicalTableName
+    ORDER BY ORDINAL_POSITION
+
+  table_relations: |
+    SELECT r.SOURCE_TABLE_ID AS sourceTableId, r.TARGET_TABLE_ID AS targetTableId,
+      r.RELATION_CONTENT AS relationContent, r.SOURCE_COLUMN AS sourceColumn,
+      r.TARGET_COLUMN AS targetColumn, r.REMARKS AS remarks
+    FROM TABLE_RELATION r
+    JOIN PROJECT_GROUP g ON g.ID = r.PROJECT_GROUP_ID AND g.ORG_ID = :orgId
+    WHERE r.ENABLED = 1 AND r.REMOVED = 0 AND g.ENABLED = 1 AND g.REMOVED = 0
+      AND FIND_IN_SET(r.SOURCE_TABLE_ID, :tableIds) > 0 AND FIND_IN_SET(r.TARGET_TABLE_ID, :tableIds) > 0
+
+  project_group_list: |
+    SELECT
+      ID AS id,
+      PARENT_ID AS parentId,
+      GROUP_NAME AS name,
+      LEVEL AS level
+    FROM PROJECT_GROUP
+    WHERE ORG_ID = :orgId AND REMOVED = 0 AND ENABLED = 1
+  
+  skill_list: |
+    SELECT
+      ID AS id,
+      PROJECT_GROUP_ID AS parentId,
+      SKILL_NAME AS name
+    FROM SKILL
+    WHERE ORG_ID = :orgId AND REMOVED = 0 AND ENABLED = 1 AND PROJECT_GROUP_ID is not null and SKILL_LEVEL_TYPE = 1
+
+  tenant_list: |
+    SELECT
+      ID AS id,
+      TENANT_NAME AS name
+    FROM AI_TENANT
+    WHERE ORG_ID = :orgId AND REMOVED = 0 AND ENABLED = 1 AND SCOPE_TYPE IN (1, 2)
+
+  # —— 技能组（替代智能体作为第一层筛选） ——
+  # 按用户组查询可用的技能组；技能组通过 SKILL_GROUP_USER_GROUP 授权到用户组。
+  user_group_skill_groups: |
+    SELECT g.ID AS id, g.GROUP_NAME AS groupName, g.DESCRIPTION AS description
+    FROM SKILL_GROUP g
+    JOIN SKILL_GROUP_USER_GROUP b ON b.SKILL_GROUP_ID = g.ID AND b.ORG_ID = g.ORG_ID
+    JOIN USER_GROUP u ON u.ID = b.USER_GROUP_ID AND u.ORG_ID = g.ORG_ID AND u.ENABLED = 1
+    WHERE u.ID = :groupId AND g.ORG_ID = :orgId AND g.ENABLED = 1
+    ORDER BY g.SORT_ORDER, g.ID
+  # 加载技能组主配置（含公司归属与启用状态）；内部用户未带公司时放开公司条件
+  skill_group_config: |
+    SELECT ID AS id, ORG_ID AS orgId, GROUP_NAME AS groupName,
+      DESCRIPTION AS description, ENABLED AS enabled
+    FROM SKILL_GROUP
+    WHERE ID = :groupId AND (:orgId IS NULL OR ORG_ID = :orgId) AND ENABLED = 1
+  # 无分页加载技能组内全部启用技能（主技能与子技能），供意图筛选与执行编排使用
+  group_skill_list: |
+    SELECT ID AS id, ORG_ID AS orgId, SKILL_GROUP_ID AS accessGroupId, PROJECT_GROUP_ID AS projectGroupId,
+      SKILL_NAME AS skillName, SKILL_DESCRIPTION AS skillDescription, SKILL_TYPE AS skillType,
+      SKILL_LEVEL_TYPE AS skillLevelType, USER_ID AS userId, RULE_CONTENT AS ruleContent,
+      TABLE_IDS AS tableIds, SUB_SKILL_IDS AS subSkillIds,
+      INTENT_LLM_ID AS intentLlmId, TASK_LLM_ID AS taskLlmId, EXECUT_LLM_ID AS executLlmId,
+      SUMMARY_LLM_ID AS summaryLlmId, TEMPERATURE AS temperature, TENANT_IDS AS tenantIds,
+      RESOURCE_CONFIGURED AS resourceConfigured
+    FROM SKILL
+    WHERE ORG_ID = :orgId AND SKILL_GROUP_ID = :groupId AND ENABLED = 1 AND REMOVED = 0
+      AND SKILL_TYPE IN (1, 2)
+    ORDER BY SKILL_LEVEL_TYPE, ID
+  # 用户可用技能全貌：当前用户组被授权的全部技能组及其技能（含主技能/子技能）。
+  # KaleidoPilot 介绍平台能力时必须知道用户能用到哪些技能，而不是只有本次命中的技能组；
+  # 用 LEFT JOIN 保留没有配置技能的技能组，避免能力介绍里漏掉整个组。
+  user_group_skill_overview: |
+    SELECT g.ID AS groupId, g.GROUP_NAME AS groupName, g.DESCRIPTION AS groupDescription,
+      s.ID AS skillId, s.SKILL_NAME AS skillName, s.SKILL_DESCRIPTION AS skillDescription,
+      s.SKILL_LEVEL_TYPE AS skillLevelType, s.SUB_SKILL_IDS AS subSkillIds
+    FROM SKILL_GROUP g
+    JOIN SKILL_GROUP_USER_GROUP b ON b.SKILL_GROUP_ID = g.ID AND b.ORG_ID = g.ORG_ID
+    JOIN USER_GROUP u ON u.ID = b.USER_GROUP_ID AND u.ORG_ID = g.ORG_ID AND u.ENABLED = 1
+    LEFT JOIN SKILL s ON s.SKILL_GROUP_ID = g.ID AND s.ORG_ID = g.ORG_ID
+      AND s.ENABLED = 1 AND s.REMOVED = 0 AND s.SKILL_TYPE IN (1, 2)
+    WHERE u.ID = :groupId AND g.ORG_ID = :orgId AND g.ENABLED = 1
+    ORDER BY g.SORT_ORDER, g.ID, s.SKILL_LEVEL_TYPE, s.ID
+  # 外部用户是否被授权使用指定技能组（内部用户不限制）
+  user_group_skill_group_access: |
+    SELECT g.ID AS id
+    FROM SKILL_GROUP g
+    JOIN SKILL_GROUP_USER_GROUP b ON b.SKILL_GROUP_ID = g.ID AND b.ORG_ID = g.ORG_ID
+    JOIN USER_GROUP u ON u.ID = b.USER_GROUP_ID AND u.ORG_ID = g.ORG_ID AND u.ENABLED = 1
+    JOIN USER_INFO_WB w ON w.GROUP_ID = u.ID AND w.ID = :userId AND w.ENABLED = 1
+    WHERE g.ID = :groupId AND g.ORG_ID = :orgId AND g.ENABLED = 1
+
+personal:
+  visible: |
+    SELECT a.ID AS id, a.AGENT_NAME AS agentName, a.AGENT_DESCRIPTION AS agentDescription,
+      a.AGENT_TYPE AS agentType, a.USER_ID AS userId, a.`KEY` AS agentKey,
+      a.ENABLED AS enabled, a.CREATE_TIME AS createTime,
+      (a.AGENT_TYPE = 2 AND a.USER_ID = :userId) AS canManage,
+      a.MCP_IDS AS mcpIds, a.TENANT_IDS AS tenantIds
+    FROM AI_AGENT a JOIN USER_INFO_WB u ON u.ID = :userId AND u.ENABLED = 1
+    JOIN USER_GROUP g ON g.ID = u.GROUP_ID AND g.ORG_ID = a.ORG_ID AND g.ENABLED = 1
+    WHERE a.ORG_ID = :orgId AND a.REMOVED = 0
+      AND (
+        (a.AGENT_TYPE = 1 AND a.ENABLED = 1 AND FIND_IN_SET(CAST(a.ID AS CHAR), g.AGENT_ID) > 0)
+        OR (a.AGENT_TYPE = 2 AND a.USER_ID = :userId)
+        OR (a.AGENT_TYPE = 2 AND a.ENABLED = 1
+          AND FIND_IN_SET(CAST(:userId AS CHAR), a.SHARE_USER_IDS) > 0
+          AND EXISTS (SELECT 1 FROM AGENT_SHARE s WHERE s.AGENT_ID = a.ID AND s.ORG_ID = a.ORG_ID
+            AND s.SHARE_USER_ID = a.USER_ID AND s.RECEIVE_USER_ID = :userId AND s.ENABLED = 1)
+          AND EXISTS (SELECT 1 FROM USER_INFO_WB owner JOIN USER_GROUP og ON og.ID = owner.GROUP_ID
+            WHERE owner.ID = a.USER_ID AND owner.ENABLED = 1 AND og.ENABLED = 1 AND og.ORG_ID = a.ORG_ID))
+      )
+      AND (:source = 'all' OR (:source = 'mine' AND a.AGENT_TYPE = 2 AND a.USER_ID = :userId)
+        OR (:source = 'company' AND a.AGENT_TYPE = 1)
+        OR (:source = 'received' AND a.AGENT_TYPE = 2 AND a.USER_ID <> :userId))
+      AND (:keyword IS NULL OR a.AGENT_NAME LIKE CONCAT('%', :keyword, '%') OR a.AGENT_DESCRIPTION LIKE CONCAT('%', :keyword, '%'))
+    ORDER BY a.ID DESC LIMIT :limit OFFSET :offset
+  count_visible: |
+    SELECT COUNT(*) AS total
+    FROM AI_AGENT a JOIN USER_INFO_WB u ON u.ID = :userId AND u.ENABLED = 1
+    JOIN USER_GROUP g ON g.ID = u.GROUP_ID AND g.ORG_ID = a.ORG_ID AND g.ENABLED = 1
+    WHERE a.ORG_ID = :orgId AND a.REMOVED = 0
+      AND (
+        (a.AGENT_TYPE = 1 AND a.ENABLED = 1 AND FIND_IN_SET(CAST(a.ID AS CHAR), g.AGENT_ID) > 0)
+        OR (a.AGENT_TYPE = 2 AND a.USER_ID = :userId)
+        OR (a.AGENT_TYPE = 2 AND a.ENABLED = 1
+          AND FIND_IN_SET(CAST(:userId AS CHAR), a.SHARE_USER_IDS) > 0
+          AND EXISTS (SELECT 1 FROM AGENT_SHARE s WHERE s.AGENT_ID = a.ID AND s.ORG_ID = a.ORG_ID
+            AND s.SHARE_USER_ID = a.USER_ID AND s.RECEIVE_USER_ID = :userId AND s.ENABLED = 1)
+          AND EXISTS (SELECT 1 FROM USER_INFO_WB owner JOIN USER_GROUP og ON og.ID = owner.GROUP_ID
+            WHERE owner.ID = a.USER_ID AND owner.ENABLED = 1 AND og.ENABLED = 1 AND og.ORG_ID = a.ORG_ID))
+      )
+      AND (:source = 'all' OR (:source = 'mine' AND a.AGENT_TYPE = 2 AND a.USER_ID = :userId)
+        OR (:source = 'company' AND a.AGENT_TYPE = 1)
+        OR (:source = 'received' AND a.AGENT_TYPE = 2 AND a.USER_ID <> :userId))
+      AND (:keyword IS NULL OR a.AGENT_NAME LIKE CONCAT('%', :keyword, '%') OR a.AGENT_DESCRIPTION LIKE CONCAT('%', :keyword, '%'))
+  own: |
+    SELECT ID AS id, ORG_ID AS orgId, AGENT_TYPE AS agentType, USER_ID AS userId,
+      SKILL_IDS AS skillIds, TEMPLATE_IDS AS templateIds,
+      SHARE_USER_IDS AS shareUserIds, MCP_IDS AS mcpIds, AGENT_NAME AS agentName,
+      AGENT_DESCRIPTION AS agentDescription, SYSTEM_PROMPT AS systemPrompt, USER_PROMPT_TEMPLATE AS userPromptTemplate,
+      TEMPERATURE AS temperature, TOP_P AS topP, INTENT_LLM_ID AS intentLlmId, TASK_LLM_ID AS taskLlmId,
+      EXECUT_LLM_ID AS executLlmId, SUMMARY_LLM_ID AS summaryLlmId,
+      TENANT_IDS AS tenantIds, TENANT_TOP_K AS tenantTopK, TENANT_SCORE AS tenantScore, ENABLED AS enabled
+    FROM AI_AGENT WHERE ID = :id AND ORG_ID = :orgId AND AGENT_TYPE = 2 AND USER_ID = :userId AND REMOVED = 0
+  lock: |
+    SELECT ID AS id, SHARE_USER_IDS AS shareUserIds, SKILL_IDS AS skillIds, TEMPLATE_IDS AS templateIds FROM AI_AGENT
+    WHERE ID = :id AND ORG_ID = :orgId AND AGENT_TYPE = 2 AND USER_ID = :userId AND REMOVED = 0 FOR UPDATE
+  update: |
+    UPDATE AI_AGENT SET AGENT_NAME = :agentName, AGENT_DESCRIPTION = :agentDescription,
+      SYSTEM_PROMPT = :systemPrompt, USER_PROMPT_TEMPLATE = :userPromptTemplate,
+      TEMPERATURE = :temperature, TOP_P = :topP, SKILL_IDS = :skillIds,
+      TEMPLATE_IDS = COALESCE(:templateIds, TEMPLATE_IDS), MCP_IDS = :mcpIds,
+      INTENT_LLM_ID = :intentLlmId, TASK_LLM_ID = :taskLlmId, EXECUT_LLM_ID = :executLlmId,
+      SUMMARY_LLM_ID = :summaryLlmId, TENANT_IDS = :tenantIds, TENANT_TOP_K = :tenantTopK,
+      TENANT_SCORE = :tenantScore, ENABLED = :enabled, UPDATE_USER_ID = :updateUserId,
+      UPDATE_USER_NAME = :updateUserName, UPDATE_TIME = :updateTime
+    WHERE ID = :id AND ORG_ID = :orgId AND AGENT_TYPE = 2 AND USER_ID = :userId AND REMOVED = 0
+  delete: |
+    UPDATE AI_AGENT SET REMOVED = 1, ENABLED = 0, SHARE_USER_IDS = NULL,
+      UPDATE_USER_ID = :updateUserId, UPDATE_USER_NAME = :updateUserName, UPDATE_TIME = :updateTime
+    WHERE ID = :id AND ORG_ID = :orgId AND AGENT_TYPE = 2 AND USER_ID = :userId AND REMOVED = 0
+  model_options: |
+    SELECT ID AS id, MODEL AS model, TYPE AS type FROM MODEL_CONFIG
+    WHERE ORG_ID = :orgId AND ENABLED = 1 AND REMOVED = 0 AND API_KEY <> '' ORDER BY ID DESC
+  share_users: |
+    SELECT u.ID AS id, u.REAL_NAME AS realName, u.ACCOUNT AS account
+    FROM USER_INFO_WB u JOIN USER_GROUP g ON g.ID = u.GROUP_ID
+    WHERE g.ORG_ID = :orgId AND g.ENABLED = 1 AND u.ENABLED = 1 AND u.ID <> :userId
+      AND (:keyword IS NULL OR u.REAL_NAME LIKE CONCAT('%', :keyword, '%') OR u.ACCOUNT LIKE CONCAT('%', :keyword, '%'))
+    ORDER BY u.ID DESC LIMIT :limit OFFSET :offset
+  share_user_count: |
+    SELECT COUNT(*) AS total FROM USER_INFO_WB u JOIN USER_GROUP g ON g.ID = u.GROUP_ID
+    WHERE g.ORG_ID = :orgId AND g.ENABLED = 1 AND u.ENABLED = 1 AND u.ID <> :userId
+      AND (:keyword IS NULL OR u.REAL_NAME LIKE CONCAT('%', :keyword, '%') OR u.ACCOUNT LIKE CONCAT('%', :keyword, '%'))
+  validate_receivers: |
+    SELECT u.ID AS id FROM USER_INFO_WB u JOIN USER_GROUP g ON g.ID = u.GROUP_ID
+    WHERE g.ORG_ID = :orgId AND g.ENABLED = 1 AND u.ENABLED = 1 AND u.ID <> :userId
+      AND FIND_IN_SET(CAST(u.ID AS CHAR), :receiveUserIds) > 0 FOR UPDATE
+  share_list: |
+    SELECT s.ID AS id, s.AGENT_ID AS agentId, s.SHARE_USER_ID AS shareUserId,
+      s.RECEIVE_USER_ID AS receiveUserId, s.ENABLED AS enabled, s.CREATE_TIME AS createTime,
+      s.UPDATE_TIME AS updateTime, u.REAL_NAME AS realName, u.ACCOUNT AS account
+    FROM AGENT_SHARE s LEFT JOIN USER_INFO_WB u ON u.ID = s.RECEIVE_USER_ID
+    WHERE s.ORG_ID = :orgId AND s.AGENT_ID = :id AND s.SHARE_USER_ID = :userId ORDER BY s.ID DESC
+  deactivate_shares: |
+    UPDATE AGENT_SHARE SET ENABLED = 0, UPDATE_TIME = CURRENT_TIMESTAMP(3)
+    WHERE ORG_ID = :orgId AND AGENT_ID = :id AND SHARE_USER_ID = :userId
+  activate_share: |
+    INSERT INTO AGENT_SHARE (ORG_ID, AGENT_ID, SHARE_USER_ID, RECEIVE_USER_ID, ENABLED)
+    VALUES (:orgId, :id, :userId, :receiveUserId, 1)
+    ON DUPLICATE KEY UPDATE ENABLED = 1, UPDATE_TIME = CURRENT_TIMESTAMP(3)
+  save_receivers: |
+    UPDATE AI_AGENT SET SHARE_USER_IDS = :receiveUserIds, UPDATE_USER_ID = :userId,
+      UPDATE_USER_NAME = :name, UPDATE_TIME = :updateTime
+    WHERE ID = :id AND ORG_ID = :orgId AND AGENT_TYPE = 2 AND USER_ID = :userId AND REMOVED = 0
+

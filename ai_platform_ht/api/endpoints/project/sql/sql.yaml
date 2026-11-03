@@ -1,0 +1,1002 @@
+# 经用户授权执行一次；运行时不会自动修改表结构。字段类型与 SYSTEM_CONFIG.ID 一致。
+sandbox_schema:
+  add_project_binding: |
+    ALTER TABLE PROJECT_GROUP
+    ADD COLUMN SANDBOX_CONFIG_ID BIGINT NULL DEFAULT NULL
+    COMMENT '一级项目组绑定的沙箱配置ID，二级技能组继承父组'
+
+template_catalog:
+  groups: |
+    SELECT p.ID AS id,p.GROUP_NAME AS groupName,p.LIBRARY_NAME AS libraryName,
+      p.SANDBOX_CONFIG_ID AS sandboxConfigId
+    FROM PROJECT_GROUP p
+    WHERE p.ORG_ID=:orgId AND p.LEVEL=0 AND p.PARENT_ID IS NULL AND p.ENABLED=1 AND p.REMOVED=0
+      AND (:userType='internal' OR EXISTS (
+        SELECT 1 FROM USER_INFO_WB u
+        JOIN USER_GROUP ug ON ug.ID=u.GROUP_ID AND ug.ORG_ID=:orgId AND ug.ENABLED=1
+        JOIN AI_AGENT a ON a.ORG_ID=:orgId AND a.AGENT_TYPE=1 AND a.ENABLED=1 AND a.REMOVED=0
+          AND FIND_IN_SET(CAST(a.ID AS CHAR),ug.AGENT_ID)>0
+        JOIN SKILL selected ON selected.ORG_ID=:orgId AND selected.SKILL_TYPE IN (1,2) AND selected.ENABLED=1 AND selected.REMOVED=0
+          AND FIND_IN_SET(CAST(selected.ID AS CHAR),a.SKILL_IDS)>0
+        JOIN SKILL s ON s.ORG_ID=:orgId AND s.SKILL_TYPE=2 AND s.ENABLED=1 AND s.REMOVED=0
+          AND (s.ID=selected.ID OR FIND_IN_SET(CAST(s.ID AS CHAR),selected.SUB_SKILL_IDS)>0)
+        JOIN PROJECT_GROUP child ON child.ID=s.PROJECT_GROUP_ID
+          AND child.ORG_ID=:orgId AND child.LEVEL=1 AND child.ENABLED=1 AND child.REMOVED=0
+        WHERE u.ID=:userId AND u.ENABLED=1 AND child.PARENT_ID=p.ID
+      ))
+    ORDER BY p.SORT_ORDER,p.ID
+  tables: |
+    SELECT t.ID AS id,t.TABLE_NAME AS tableName,t.TABLE_CN_NAME AS tableCnName,
+      t.TABLE_COMMENT AS tableComment,t.COLUMNS_JSON AS columnsJson
+    FROM TABLE_MANAGEMENT t JOIN PROJECT_GROUP p ON p.ID=t.PROJECT_GROUP_ID
+    WHERE p.ORG_ID=:orgId AND p.ID=:projectGroupId AND p.LEVEL=0 AND p.ENABLED=1 AND p.REMOVED=0
+      AND t.ENABLED=1 AND t.REMOVED=0
+      AND (:userType='internal' OR EXISTS (
+        SELECT 1 FROM USER_INFO_WB u
+        JOIN USER_GROUP ug ON ug.ID=u.GROUP_ID AND ug.ORG_ID=:orgId AND ug.ENABLED=1
+        JOIN AI_AGENT a ON a.ORG_ID=:orgId AND a.AGENT_TYPE=1 AND a.ENABLED=1 AND a.REMOVED=0
+          AND FIND_IN_SET(CAST(a.ID AS CHAR),ug.AGENT_ID)>0
+        JOIN SKILL selected ON selected.ORG_ID=:orgId AND selected.SKILL_TYPE IN (1,2) AND selected.ENABLED=1 AND selected.REMOVED=0
+          AND FIND_IN_SET(CAST(selected.ID AS CHAR),a.SKILL_IDS)>0
+        JOIN SKILL s ON s.ORG_ID=:orgId AND s.SKILL_TYPE=2 AND s.ENABLED=1 AND s.REMOVED=0
+          AND (s.ID=selected.ID OR FIND_IN_SET(CAST(s.ID AS CHAR),selected.SUB_SKILL_IDS)>0)
+        JOIN PROJECT_GROUP child ON child.ID=s.PROJECT_GROUP_ID
+          AND child.ORG_ID=:orgId AND child.LEVEL=1 AND child.ENABLED=1 AND child.REMOVED=0
+        WHERE u.ID=:userId AND u.ENABLED=1 AND child.PARENT_ID=p.ID
+          AND FIND_IN_SET(CAST(t.ID AS CHAR),s.TABLE_IDS)>0
+      )) ORDER BY t.ID
+  relations: |
+    SELECT r.ID AS id,r.SOURCE_TABLE_ID AS sourceTableId,r.SOURCE_COLUMN AS sourceColumn,
+      r.TARGET_TABLE_ID AS targetTableId,r.TARGET_COLUMN AS targetColumn,
+      r.RELATION_CONTENT AS relationContent,r.REMARKS AS remarks
+    FROM TABLE_RELATION r JOIN PROJECT_GROUP p ON p.ID=r.PROJECT_GROUP_ID
+    WHERE p.ORG_ID=:orgId AND p.ID=:projectGroupId AND p.ENABLED=1 AND p.REMOVED=0
+      AND r.ENABLED=1 AND r.REMOVED=0 ORDER BY r.ID
+
+project_group:
+  list: |
+    SELECT
+      ID AS id,
+      ORG_ID AS orgId,
+      PARENT_ID AS parentId,
+      GROUP_NAME AS groupName,
+      LEVEL AS level,
+      SORT_ORDER AS sortOrder,
+      LIBRARY_NAME AS libraryName,
+      SANDBOX_CONFIG_ID AS sandboxConfigId,
+      ENABLED AS enabled,
+      CREATE_TIME AS createTime,
+      UPDATE_TIME AS updateTime
+    FROM PROJECT_GROUP
+    WHERE REMOVED = 0
+      AND ORG_ID = :orgId
+      AND LEVEL IN (0, 1)
+    ORDER BY LEVEL ASC, SORT_ORDER ASC, ID ASC
+
+  find_duplicate_skill_group_name: |
+    SELECT ID AS id, GROUP_NAME AS groupName
+    FROM PROJECT_GROUP
+    WHERE PARENT_ID = :rootProjectGroupId
+      AND ORG_ID = :orgId
+      AND LEVEL = 1
+      AND GROUP_NAME = :groupName
+      AND REMOVED = 0
+      AND ID <> :excludeId
+    LIMIT 1
+
+  find_duplicate_root_name: |
+    SELECT ID AS id, GROUP_NAME AS groupName
+    FROM PROJECT_GROUP
+    WHERE ORG_ID = :orgId
+      AND PARENT_ID IS NULL
+      AND LEVEL = 0
+      AND GROUP_NAME = :groupName
+      AND REMOVED = 0
+      AND ID <> :excludeId
+    LIMIT 1
+
+  count_children: |
+    SELECT COUNT(*) AS total
+    FROM PROJECT_GROUP
+    WHERE PARENT_ID = :projectGroupId
+      AND ORG_ID = :orgId
+      AND LEVEL = 1
+      AND REMOVED = 0
+      AND (
+        :keyword = ''
+        OR GROUP_NAME LIKE CONCAT('%', :keyword, '%')
+      )
+
+  list_children_page: |
+    SELECT
+      ID AS id,
+      ORG_ID AS orgId,
+      PARENT_ID AS parentId,
+      GROUP_NAME AS groupName,
+      LEVEL AS level,
+      SORT_ORDER AS sortOrder,
+      LIBRARY_NAME AS libraryName,
+      SANDBOX_CONFIG_ID AS sandboxConfigId,
+      ENABLED AS enabled,
+      CREATE_TIME AS createTime,
+      UPDATE_TIME AS updateTime
+    FROM PROJECT_GROUP
+    WHERE PARENT_ID = :projectGroupId
+      AND ORG_ID = :orgId
+      AND LEVEL = 1
+      AND REMOVED = 0
+      AND (
+        :keyword = ''
+        OR GROUP_NAME LIKE CONCAT('%', :keyword, '%')
+      )
+    ORDER BY SORT_ORDER ASC, ID ASC
+    LIMIT :limit OFFSET :offset
+
+  find_active_by_id: |
+    SELECT
+      ID AS id,
+      ORG_ID AS orgId,
+      PARENT_ID AS parentId,
+      GROUP_NAME AS groupName,
+      LEVEL AS level,
+      SORT_ORDER AS sortOrder,
+      LIBRARY_NAME AS libraryName,
+      SANDBOX_CONFIG_ID AS sandboxConfigId,
+      ENABLED AS enabled,
+      CREATE_TIME AS createTime,
+      UPDATE_TIME AS updateTime
+    FROM PROJECT_GROUP
+    WHERE ID = :id
+      AND ORG_ID = :orgId
+      AND ENABLED = 1
+      AND REMOVED = 0
+
+  find_by_id: |
+    SELECT
+      ID AS id,
+      ORG_ID AS orgId,
+      PARENT_ID AS parentId,
+      GROUP_NAME AS groupName,
+      LEVEL AS level,
+      SORT_ORDER AS sortOrder,
+      LIBRARY_NAME AS libraryName,
+      SANDBOX_CONFIG_ID AS sandboxConfigId,
+      ENABLED AS enabled,
+      CREATE_TIME AS createTime,
+      UPDATE_TIME AS updateTime
+    FROM PROJECT_GROUP
+    WHERE ID = :id
+      AND ORG_ID = :orgId
+      AND REMOVED = 0
+
+  insert: |
+    INSERT INTO PROJECT_GROUP (
+      ORG_ID,
+      PARENT_ID,
+      GROUP_NAME,
+      LEVEL,
+      SORT_ORDER,
+      LIBRARY_NAME,
+      SANDBOX_CONFIG_ID,
+      ENABLED,
+      REMOVED,
+      CREATE_USER_ID,
+      CREATE_USER_NAME,
+      CREATE_TIME
+    ) SELECT
+      :orgId,
+      :parentId,
+      :groupName,
+      :level,
+      :sortOrder,
+      :libraryName,
+      :sandboxConfigId,
+      :enabled,
+      0,
+      :createUserId,
+      :createUserName,
+      :createTime
+    WHERE :sandboxConfigId IS NULL OR EXISTS (
+      SELECT 1 FROM SYSTEM_CONFIG
+      WHERE ID = :sandboxConfigId AND ORG_ID = :orgId
+        AND CONFIG_TYPE = 4 AND ENABLED = 1 AND REMOVED = 0
+    )
+
+  update: |
+    UPDATE PROJECT_GROUP
+    SET
+      GROUP_NAME = :groupName,
+      SORT_ORDER = :sortOrder,
+      LIBRARY_NAME = CASE
+        WHEN SANDBOX_CONFIG_ID IS NOT NULL AND SANDBOX_CONFIG_ID <> :sandboxConfigId THEN NULL
+        ELSE LIBRARY_NAME END,
+      SANDBOX_CONFIG_ID = :sandboxConfigId,
+      ENABLED = :enabled,
+      UPDATE_USER_ID = :updateUserId,
+      UPDATE_USER_NAME = :updateUserName,
+      UPDATE_TIME = :updateTime
+    WHERE ID = :id
+      AND ORG_ID = :orgId
+      AND REMOVED = 0
+      AND (:sandboxConfigId IS NULL OR EXISTS (
+        SELECT 1 FROM SYSTEM_CONFIG
+        WHERE ID = :sandboxConfigId AND ORG_ID = :orgId
+          AND CONFIG_TYPE = 4 AND ENABLED = 1 AND REMOVED = 0
+      ))
+      AND (SANDBOX_CONFIG_ID IS NULL OR SANDBOX_CONFIG_ID = :sandboxConfigId OR (
+        NOT EXISTS (SELECT 1 FROM TABLE_MANAGEMENT WHERE PROJECT_GROUP_ID = :id AND REMOVED = 0)
+        AND NOT EXISTS (SELECT 1 FROM TABLE_RELATION WHERE PROJECT_GROUP_ID = :id AND REMOVED = 0)
+      ))
+
+  update_library_name: |
+    UPDATE PROJECT_GROUP
+    SET
+      LIBRARY_NAME = :libraryName,
+      UPDATE_USER_ID = :updateUserId,
+      UPDATE_USER_NAME = :updateUserName,
+      UPDATE_TIME = :updateTime
+    WHERE ID = :id
+      AND ORG_ID = :orgId
+      AND REMOVED = 0
+
+  reference_counts: |
+    SELECT
+      (
+        SELECT COUNT(*)
+        FROM PROJECT_GROUP
+        WHERE PARENT_ID = :id
+          AND ORG_ID = :orgId
+          AND REMOVED = 0
+      ) AS childCount,
+      (
+        SELECT COUNT(*)
+        FROM TABLE_MANAGEMENT
+        WHERE PROJECT_GROUP_ID = :id
+          AND REMOVED = 0
+      ) AS tableCount,
+      (
+        SELECT COUNT(*)
+        FROM TABLE_RELATION
+        WHERE PROJECT_GROUP_ID = :id
+          AND REMOVED = 0
+      ) AS relationCount,
+      (
+        SELECT COUNT(*)
+        FROM SKILL
+        WHERE PROJECT_GROUP_ID = :id
+          AND ORG_ID = :orgId
+          AND REMOVED = 0
+      ) AS skillCount
+
+  physical_delete: |
+    DELETE FROM PROJECT_GROUP
+    WHERE ID = :id
+      AND ORG_ID = :orgId
+      AND REMOVED = 0
+
+table_management:
+  databases: |
+    SELECT
+      schema_info.SCHEMA_NAME AS libraryName,
+      COUNT(table_info.TABLE_NAME) AS tableCount
+    FROM information_schema.SCHEMATA AS schema_info
+    LEFT JOIN information_schema.TABLES AS table_info
+      ON table_info.TABLE_SCHEMA = schema_info.SCHEMA_NAME
+      AND table_info.TABLE_TYPE = 'BASE TABLE'
+    WHERE schema_info.SCHEMA_NAME NOT IN (
+      'information_schema',
+      'mysql',
+      'performance_schema',
+      'sys'
+    )
+    GROUP BY schema_info.SCHEMA_NAME
+    ORDER BY schema_info.SCHEMA_NAME ASC
+
+  find_database: |
+    SELECT
+      schema_info.SCHEMA_NAME AS libraryName,
+      COUNT(table_info.TABLE_NAME) AS tableCount
+    FROM information_schema.SCHEMATA AS schema_info
+    LEFT JOIN information_schema.TABLES AS table_info
+      ON table_info.TABLE_SCHEMA = schema_info.SCHEMA_NAME
+      AND table_info.TABLE_TYPE = 'BASE TABLE'
+    WHERE schema_info.SCHEMA_NAME = :libraryName
+      AND schema_info.SCHEMA_NAME NOT IN (
+        'information_schema',
+        'mysql',
+        'performance_schema',
+        'sys'
+      )
+    GROUP BY schema_info.SCHEMA_NAME
+
+  physical_tables: |
+    SELECT
+      CONCAT(TABLE_SCHEMA, '.', TABLE_NAME) AS tableName,
+      TABLE_SCHEMA AS tableSchema,
+      TABLE_NAME AS physicalTableName,
+      TABLE_COMMENT AS databaseComment
+    FROM information_schema.TABLES
+    WHERE TABLE_SCHEMA = :libraryName
+      AND TABLE_TYPE = 'BASE TABLE'
+    ORDER BY TABLE_NAME ASC
+
+  find_physical_table: |
+    SELECT
+      CONCAT(TABLE_SCHEMA, '.', TABLE_NAME) AS tableName,
+      TABLE_SCHEMA AS tableSchema,
+      TABLE_NAME AS physicalTableName,
+      TABLE_COMMENT AS databaseComment
+    FROM information_schema.TABLES
+    WHERE TABLE_SCHEMA = :libraryName
+      AND TABLE_NAME = :physicalTableName
+      AND TABLE_TYPE = 'BASE TABLE'
+
+  physical_columns: |
+    SELECT
+      CONCAT(TABLE_SCHEMA, '.', TABLE_NAME) AS tableName,
+      COLUMN_NAME AS columnName,
+      COLUMN_TYPE AS columnType,
+      COLUMN_COMMENT AS columnComment
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = :libraryName
+    ORDER BY TABLE_NAME ASC, ORDINAL_POSITION ASC
+
+  physical_columns_by_table: |
+    SELECT
+      CONCAT(TABLE_SCHEMA, '.', TABLE_NAME) AS tableName,
+      COLUMN_NAME AS columnName,
+      COLUMN_TYPE AS columnType,
+      COLUMN_COMMENT AS columnComment
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = :libraryName
+      AND TABLE_NAME = :physicalTableName
+    ORDER BY ORDINAL_POSITION ASC
+
+  list_by_project_group: |
+    SELECT
+      ID AS id,
+      TABLE_NAME AS tableName,
+      TABLE_CN_NAME AS tableCnName,
+      TABLE_COMMENT AS tableComment,
+      COLUMNS_JSON AS columnsJson
+    FROM TABLE_MANAGEMENT
+    WHERE PROJECT_GROUP_ID = :projectGroupId
+      AND REMOVED = 0
+    ORDER BY ID ASC
+
+  list_active_ids_by_project_group: |
+    SELECT ID AS id
+    FROM TABLE_MANAGEMENT
+    WHERE PROJECT_GROUP_ID = :projectGroupId
+      AND ENABLED = 1
+      AND REMOVED = 0
+    ORDER BY ID ASC
+
+  list_relation_candidates: |
+    SELECT
+      ID AS id,
+      TABLE_NAME AS tableName,
+      TABLE_CN_NAME AS tableCnName,
+      TABLE_COMMENT AS tableComment,
+      COLUMNS_JSON AS columnsJson
+    FROM TABLE_MANAGEMENT
+    WHERE PROJECT_GROUP_ID = :projectGroupId
+      AND ENABLED = 1
+      AND REMOVED = 0
+    ORDER BY ID ASC
+
+  count_by_project_group: |
+    SELECT COUNT(*) AS total
+    FROM TABLE_MANAGEMENT
+    WHERE PROJECT_GROUP_ID = :projectGroupId
+      AND REMOVED = 0
+      AND (
+        :keyword = ''
+        OR TABLE_NAME LIKE CONCAT('%', :keyword, '%')
+        OR COALESCE(TABLE_CN_NAME, '') LIKE CONCAT('%', :keyword, '%')
+      )
+
+  list_page_by_project_group: |
+    SELECT
+      ID AS id,
+      TABLE_NAME AS tableName,
+      TABLE_CN_NAME AS tableCnName,
+      TABLE_COMMENT AS tableComment,
+      COLUMNS_JSON AS columnsJson
+    FROM TABLE_MANAGEMENT
+    WHERE PROJECT_GROUP_ID = :projectGroupId
+      AND REMOVED = 0
+      AND (
+        :keyword = ''
+        OR TABLE_NAME LIKE CONCAT('%', :keyword, '%')
+        OR COALESCE(TABLE_CN_NAME, '') LIKE CONCAT('%', :keyword, '%')
+      )
+    ORDER BY ID ASC
+    LIMIT :limit OFFSET :offset
+
+  find_active_by_id_and_project_group: |
+    SELECT
+      ID AS id,
+      PROJECT_GROUP_ID AS projectGroupId,
+      TABLE_NAME AS tableName,
+      TABLE_CN_NAME AS tableCnName,
+      TABLE_COMMENT AS tableComment,
+      COLUMNS_JSON AS columnsJson
+    FROM TABLE_MANAGEMENT
+    WHERE ID = :id
+      AND PROJECT_GROUP_ID = :projectGroupId
+      AND ENABLED = 1
+      AND REMOVED = 0
+
+  relation_table_ids_by_project_group: |
+    SELECT
+      SOURCE_TABLE_ID AS sourceTableId,
+      TARGET_TABLE_ID AS targetTableId
+    FROM TABLE_RELATION
+    WHERE PROJECT_GROUP_ID = :projectGroupId
+      AND REMOVED = 0
+
+  upsert: |
+    INSERT INTO TABLE_MANAGEMENT (
+      PROJECT_GROUP_ID,
+      TABLE_NAME,
+      TABLE_CN_NAME,
+      TABLE_COMMENT,
+      COLUMNS_JSON,
+      ENABLED,
+      REMOVED,
+      CREATE_USER_ID,
+      CREATE_USER_NAME,
+      CREATE_TIME
+    ) VALUES (
+      :projectGroupId,
+      :tableName,
+      :tableCnName,
+      :tableComment,
+      :columnsJson,
+      1,
+      0,
+      :createUserId,
+      :createUserName,
+      :createTime
+    )
+    ON DUPLICATE KEY UPDATE
+      TABLE_CN_NAME = VALUES(TABLE_CN_NAME),
+      TABLE_COMMENT = VALUES(TABLE_COMMENT),
+      COLUMNS_JSON = VALUES(COLUMNS_JSON),
+      ENABLED = 1,
+      REMOVED = 0,
+      UPDATE_USER_ID = :updateUserId,
+      UPDATE_USER_NAME = :updateUserName,
+      UPDATE_TIME = :updateTime
+
+  update_columns_json: |
+    UPDATE TABLE_MANAGEMENT
+    SET COLUMNS_JSON = :columnsJson,
+      UPDATE_USER_ID = :updateUserId,
+      UPDATE_USER_NAME = :updateUserName,
+      UPDATE_TIME = :updateTime
+    WHERE ID = :id
+      AND PROJECT_GROUP_ID = :projectGroupId
+      AND REMOVED = 0
+
+  physical_delete_by_id: |
+    DELETE FROM TABLE_MANAGEMENT
+    WHERE ID = :id
+      AND PROJECT_GROUP_ID = :projectGroupId
+
+table_relation:
+  list_by_project_group: |
+    SELECT
+      relation.ID AS id,
+      relation.PROJECT_GROUP_ID AS projectGroupId,
+      relation.SOURCE_TABLE_ID AS sourceTableId,
+      source.TABLE_NAME AS sourceTableName,
+      source.TABLE_CN_NAME AS sourceTableCnName,
+      relation.SOURCE_COLUMN AS sourceColumn,
+      relation.TARGET_TABLE_ID AS targetTableId,
+      target.TABLE_NAME AS targetTableName,
+      target.TABLE_CN_NAME AS targetTableCnName,
+      relation.TARGET_COLUMN AS targetColumn,
+      relation.RELATION_CONTENT AS relationContent,
+      relation.REMARKS AS remarks,
+      relation.CREATE_TIME AS createTime,
+      relation.UPDATE_TIME AS updateTime
+    FROM TABLE_RELATION relation
+    INNER JOIN TABLE_MANAGEMENT source
+      ON source.ID = relation.SOURCE_TABLE_ID
+      AND source.PROJECT_GROUP_ID = relation.PROJECT_GROUP_ID
+      AND source.ENABLED = 1
+      AND source.REMOVED = 0
+    INNER JOIN TABLE_MANAGEMENT target
+      ON target.ID = relation.TARGET_TABLE_ID
+      AND target.PROJECT_GROUP_ID = relation.PROJECT_GROUP_ID
+      AND target.ENABLED = 1
+      AND target.REMOVED = 0
+    WHERE relation.PROJECT_GROUP_ID = :projectGroupId
+      AND relation.ENABLED = 1
+      AND relation.REMOVED = 0
+    ORDER BY relation.CREATE_TIME DESC, relation.ID DESC
+
+  list_ids_by_project_group: |
+    SELECT ID AS id
+    FROM TABLE_RELATION
+    WHERE PROJECT_GROUP_ID = :projectGroupId
+      AND ENABLED = 1
+      AND REMOVED = 0
+
+  tables_by_ids: |
+    SELECT
+      ID AS id,
+      COLUMNS_JSON AS columnsJson
+    FROM TABLE_MANAGEMENT
+    WHERE PROJECT_GROUP_ID = :projectGroupId
+      AND ID IN (:sourceTableId, :targetTableId)
+      AND ENABLED = 1
+      AND REMOVED = 0
+
+  find_active_by_id: |
+    SELECT
+      ID AS id,
+      PROJECT_GROUP_ID AS projectGroupId
+    FROM TABLE_RELATION
+    WHERE ID = :id
+      AND PROJECT_GROUP_ID = :projectGroupId
+      AND ENABLED = 1
+      AND REMOVED = 0
+
+  find_duplicate: |
+    SELECT ID AS id
+    FROM TABLE_RELATION
+    WHERE PROJECT_GROUP_ID = :projectGroupId
+      AND ENABLED = 1
+      AND REMOVED = 0
+      AND ID <> :excludeId
+      AND (
+        (
+          SOURCE_TABLE_ID = :sourceTableId
+          AND TARGET_TABLE_ID = :targetTableId
+          AND SOURCE_COLUMN = :sourceColumn
+          AND TARGET_COLUMN = :targetColumn
+        )
+        OR
+        (
+          SOURCE_TABLE_ID = :targetTableId
+          AND TARGET_TABLE_ID = :sourceTableId
+          AND SOURCE_COLUMN = :targetColumn
+          AND TARGET_COLUMN = :sourceColumn
+        )
+      )
+    LIMIT 1
+
+  insert: |
+    INSERT INTO TABLE_RELATION (
+      PROJECT_GROUP_ID,
+      SOURCE_TABLE_ID,
+      TARGET_TABLE_ID,
+      RELATION_CONTENT,
+      SOURCE_COLUMN,
+      TARGET_COLUMN,
+      CREATE_USER_ID,
+      CREATE_USER_NAME,
+      CREATE_TIME
+    ) VALUES (
+      :projectGroupId,
+      :sourceTableId,
+      :targetTableId,
+      :relationContent,
+      :sourceColumn,
+      :targetColumn,
+      :createUserId,
+      :createUserName,
+      :createTime
+    )
+
+  update: |
+    UPDATE TABLE_RELATION
+    SET SOURCE_TABLE_ID = :sourceTableId,
+      TARGET_TABLE_ID = :targetTableId,
+      RELATION_CONTENT = :relationContent,
+      SOURCE_COLUMN = :sourceColumn,
+      TARGET_COLUMN = :targetColumn,
+      UPDATE_USER_ID = :updateUserId,
+      UPDATE_USER_NAME = :updateUserName,
+      UPDATE_TIME = :updateTime
+    WHERE ID = :id
+      AND PROJECT_GROUP_ID = :projectGroupId
+      AND ENABLED = 1
+      AND REMOVED = 0
+
+  physical_delete: |
+    DELETE FROM TABLE_RELATION
+    WHERE ID = :id
+      AND PROJECT_GROUP_ID = :projectGroupId
+
+skill:
+  execution_config: |
+    SELECT RESOURCE_CONFIGURED AS resourceConfigured,TABLE_IDS AS tableIds FROM SKILL
+    WHERE ORG_ID=:orgId AND ID=:skillIds AND SKILL_TYPE=2 AND REMOVED=0
+  list_table_ids_by_root_project_group: |
+    SELECT skill.ID AS id, skill.TABLE_IDS AS tableIds
+    FROM SKILL AS skill
+    INNER JOIN PROJECT_GROUP AS skill_group
+      ON skill_group.ID = skill.PROJECT_GROUP_ID
+      AND skill_group.ORG_ID = :orgId
+      AND skill_group.PARENT_ID = :rootProjectGroupId
+      AND skill_group.LEVEL = 1
+      AND skill_group.REMOVED = 0
+    WHERE skill.SKILL_TYPE = 2
+      AND skill.ORG_ID = :orgId
+      AND skill.REMOVED = 0
+    UNION
+    SELECT ID AS id,TABLE_IDS AS tableIds FROM SKILL
+    WHERE ORG_ID=:orgId AND REMOVED=0 AND RESOURCE_CONFIGURED=1
+
+  list_by_skill_group: |
+    SELECT
+      skill.ID AS id,
+      skill.PROJECT_GROUP_ID AS skillGroupId,
+      skill_group.GROUP_NAME AS skillGroupName,
+      skill.SKILL_NAME AS skillName,
+      skill.SKILL_DESCRIPTION AS skillDescription,
+      skill.SKILL_TYPE AS skillType,
+      skill.TEMPLATE_ID AS templateId,
+      skill.SKILL_LEVEL_TYPE AS skillLevelType,
+      skill.RULE_CONTENT AS ruleContent,
+      skill.TABLE_IDS AS tableIds,
+      skill.SUB_SKILL_IDS AS subSkillIds,
+      skill.ENABLED AS enabled,
+      skill.CREATE_TIME AS createTime,
+      skill.UPDATE_TIME AS updateTime
+    FROM SKILL AS skill
+    INNER JOIN PROJECT_GROUP AS skill_group
+      ON skill_group.ID = skill.PROJECT_GROUP_ID
+      AND skill_group.ORG_ID = :orgId
+      AND skill_group.LEVEL = 1
+      AND skill_group.REMOVED = 0
+    WHERE skill.PROJECT_GROUP_ID = :skillGroupId
+      AND skill.ORG_ID = :orgId
+      AND skill.SKILL_TYPE = 2
+      AND skill.REMOVED = 0
+      AND (
+        :keyword = ''
+        OR skill.SKILL_NAME LIKE CONCAT('%', :keyword, '%')
+        OR COALESCE(skill.SKILL_DESCRIPTION, '') LIKE CONCAT('%', :keyword, '%')
+      )
+      AND (:enabled IS NULL OR skill.ENABLED = :enabled)
+      AND (:skillLevelType IS NULL OR skill.SKILL_LEVEL_TYPE = :skillLevelType)
+    ORDER BY COALESCE(skill.UPDATE_TIME, skill.CREATE_TIME) DESC, skill.ID DESC
+    LIMIT :limit OFFSET :offset
+
+  count_by_skill_group: |
+    SELECT COUNT(*) AS total
+    FROM SKILL
+    WHERE PROJECT_GROUP_ID = :skillGroupId
+      AND ORG_ID = :orgId
+      AND SKILL_TYPE = 2
+      AND REMOVED = 0
+      AND (
+        :keyword = ''
+        OR SKILL_NAME LIKE CONCAT('%', :keyword, '%')
+        OR COALESCE(SKILL_DESCRIPTION, '') LIKE CONCAT('%', :keyword, '%')
+      )
+      AND (:enabled IS NULL OR ENABLED = :enabled)
+      AND (:skillLevelType IS NULL OR SKILL_LEVEL_TYPE = :skillLevelType)
+
+  list_by_root_project_group: |
+    SELECT
+      skill.ID AS id,
+      skill.TEMPLATE_ID AS templateId,
+      skill.PROJECT_GROUP_ID AS skillGroupId,
+      skill_group.GROUP_NAME AS skillGroupName,
+      skill.SKILL_NAME AS skillName,
+      skill.SKILL_DESCRIPTION AS skillDescription,
+      skill.SKILL_TYPE AS skillType,
+      skill.SKILL_LEVEL_TYPE AS skillLevelType,
+      skill.RULE_CONTENT AS ruleContent,
+      skill.TABLE_IDS AS tableIds,
+      skill.SUB_SKILL_IDS AS subSkillIds,
+      skill.ENABLED AS enabled,
+      skill.CREATE_TIME AS createTime,
+      skill.UPDATE_TIME AS updateTime
+    FROM SKILL AS skill
+    INNER JOIN PROJECT_GROUP AS skill_group
+      ON skill_group.ID = skill.PROJECT_GROUP_ID
+      AND skill_group.ORG_ID = :orgId
+      AND skill_group.PARENT_ID = :rootProjectGroupId
+      AND skill_group.LEVEL = 1
+      AND skill_group.REMOVED = 0
+    WHERE skill.SKILL_TYPE = 2
+      AND skill.ORG_ID = :orgId
+      AND skill.REMOVED = 0
+      AND (
+        :keyword = ''
+        OR skill.SKILL_NAME LIKE CONCAT('%', :keyword, '%')
+        OR COALESCE(skill.SKILL_DESCRIPTION, '') LIKE CONCAT('%', :keyword, '%')
+        OR skill_group.GROUP_NAME LIKE CONCAT('%', :keyword, '%')
+      )
+      AND (:enabled IS NULL OR skill.ENABLED = :enabled)
+      AND (:skillLevelType IS NULL OR skill.SKILL_LEVEL_TYPE = :skillLevelType)
+    ORDER BY skill_group.SORT_ORDER ASC,
+      skill_group.ID ASC,
+      COALESCE(skill.UPDATE_TIME, skill.CREATE_TIME) DESC,
+      skill.ID DESC
+    LIMIT :limit OFFSET :offset
+
+  count_by_root_project_group: |
+    SELECT COUNT(*) AS total
+    FROM SKILL AS skill
+    INNER JOIN PROJECT_GROUP AS skill_group
+      ON skill_group.ID = skill.PROJECT_GROUP_ID
+      AND skill_group.ORG_ID = :orgId
+      AND skill_group.PARENT_ID = :rootProjectGroupId
+      AND skill_group.LEVEL = 1
+      AND skill_group.REMOVED = 0
+    WHERE skill.SKILL_TYPE = 2
+      AND skill.ORG_ID = :orgId
+      AND skill.REMOVED = 0
+      AND (
+        :keyword = ''
+        OR skill.SKILL_NAME LIKE CONCAT('%', :keyword, '%')
+        OR COALESCE(skill.SKILL_DESCRIPTION, '') LIKE CONCAT('%', :keyword, '%')
+        OR skill_group.GROUP_NAME LIKE CONCAT('%', :keyword, '%')
+      )
+      AND (:enabled IS NULL OR skill.ENABLED = :enabled)
+      AND (:skillLevelType IS NULL OR skill.SKILL_LEVEL_TYPE = :skillLevelType)
+
+  find_active_by_id: |
+    SELECT
+      ID AS id,
+      PROJECT_GROUP_ID AS skillGroupId,
+      SKILL_TYPE AS skillType,
+      SKILL_LEVEL_TYPE AS skillLevelType,
+      TABLE_IDS AS tableIds,
+      SUB_SKILL_IDS AS subSkillIds,
+      (SELECT COUNT(*) FROM USER_MCP_SKILL b WHERE b.ORG_ID = SKILL.ORG_ID AND
+      (b.SKILL_ID = SKILL.ID OR EXISTS (SELECT 1 FROM SKILL p WHERE p.ID = b.SKILL_ID
+      AND p.ORG_ID = SKILL.ORG_ID AND p.SKILL_TYPE = SKILL.SKILL_TYPE AND p.REMOVED = 0
+      AND FIND_IN_SET(SKILL.ID, p.SUB_SKILL_IDS) > 0
+      AND (p.SKILL_TYPE <> 3 OR p.USER_ID = SKILL.USER_ID)
+      AND p.PROJECT_GROUP_ID <=> SKILL.PROJECT_GROUP_ID))) AS mcpBindingCount
+    FROM SKILL
+    WHERE ID = :id
+      AND ORG_ID = :orgId
+      AND SKILL_TYPE = 2
+      AND REMOVED = 0
+
+  find_duplicate_name: |
+    SELECT ID AS id, SKILL_NAME AS skillName
+    FROM SKILL
+    WHERE PROJECT_GROUP_ID = :skillGroupId
+      AND ORG_ID = :orgId
+      AND SKILL_TYPE = 2
+      AND SKILL_NAME = :skillName
+      AND REMOVED = 0
+      AND ID <> :excludeId
+    LIMIT 1
+
+  list_sub_skill_options: |
+    SELECT
+      ID AS id,
+      SKILL_NAME AS skillName,
+      SKILL_DESCRIPTION AS skillDescription,
+      ENABLED AS enabled
+    FROM SKILL
+    WHERE PROJECT_GROUP_ID = :skillGroupId
+      AND ORG_ID = :orgId
+      AND SKILL_TYPE = 2
+      AND SKILL_LEVEL_TYPE = 2
+      AND ENABLED = 1
+      AND REMOVED = 0
+    ORDER BY COALESCE(UPDATE_TIME, CREATE_TIME) DESC, ID DESC
+
+  insert: |
+    INSERT INTO SKILL (
+      ORG_ID,
+      PROJECT_GROUP_ID,
+      TEMPLATE_ID,
+      SKILL_NAME,
+      SKILL_DESCRIPTION,
+      SKILL_TYPE,
+      SKILL_LEVEL_TYPE,
+      RULE_CONTENT,
+      TABLE_IDS,
+      SUB_SKILL_IDS,
+      USER_ID,
+      ENABLED,
+      REMOVED,
+      CREATE_USER_ID,
+      CREATE_USER_NAME,
+      CREATE_TIME
+    ) VALUES (
+      :orgId,
+      :skillGroupId,
+      :templateId,
+      :skillName,
+      :skillDescription,
+      :skillType,
+      :skillLevelType,
+      :ruleContent,
+      :tableIds,
+      :subSkillIds,
+      :userId,
+      :enabled,
+      :removed,
+      :createUserId,
+      :createUserName,
+      :createTime
+    )
+
+  update: |
+    UPDATE SKILL
+    SET SKILL_NAME = :skillName,
+      TEMPLATE_ID = CASE WHEN :updateTemplate=1 THEN :templateId ELSE TEMPLATE_ID END,
+      SKILL_DESCRIPTION = :skillDescription,
+      SKILL_LEVEL_TYPE = :skillLevelType,
+      RULE_CONTENT = :ruleContent,
+      PROJECT_GROUP_ID = :skillGroupId,
+      TABLE_IDS = :tableIds,
+      SUB_SKILL_IDS = :subSkillIds,
+      ENABLED = :enabled,
+      UPDATE_USER_ID = :updateUserId,
+      UPDATE_USER_NAME = :updateUserName,
+      UPDATE_TIME = :updateTime
+    WHERE ID = :id
+      AND ORG_ID = :orgId
+      AND SKILL_TYPE = 2
+      AND REMOVED = 0
+
+  physical_delete: |
+    DELETE FROM SKILL
+    WHERE ID = :id
+      AND ORG_ID = :orgId
+      AND SKILL_TYPE = 2
+      AND REMOVED = 0
+
+  remove_sub_skill_reference: |
+    UPDATE SKILL
+    SET SUB_SKILL_IDS = NULLIF(
+        TRIM(BOTH ',' FROM REPLACE(
+          CONCAT(',', COALESCE(SUB_SKILL_IDS, ''), ','),
+          CONCAT(',', :removedSkillId, ','),
+          ','
+        )),
+        ''
+      ),
+      UPDATE_USER_ID = :updateUserId,
+      UPDATE_USER_NAME = :updateUserName,
+      UPDATE_TIME = :updateTime
+    WHERE SKILL_TYPE = 2
+      AND ORG_ID = :orgId
+      AND SKILL_LEVEL_TYPE = 1
+      AND REMOVED = 0
+      AND FIND_IN_SET(CAST(:removedSkillId AS CHAR), SUB_SKILL_IDS) > 0
+
+  physical_delete_by_skill_group: |
+    DELETE FROM SKILL
+    WHERE PROJECT_GROUP_ID = :skillGroupId
+      AND ORG_ID = :orgId
+      AND SKILL_TYPE = 2
+      AND REMOVED = 0
+
+  list_ids_by_skill_group: |
+    SELECT ID AS id
+    FROM SKILL
+    WHERE PROJECT_GROUP_ID = :skillGroupId
+      AND ORG_ID = :orgId
+      AND SKILL_TYPE = 2
+      AND REMOVED = 0
+    ORDER BY ID ASC
+
+demo_tables:
+  create_house_info: |
+    CREATE TABLE IF NOT EXISTS aitest.AI_PLATFORM_DEMO_HOUSE_INFO (
+      ID INT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+      HOUSE_CODE VARCHAR(32) NOT NULL COMMENT '房屋编码',
+      COMMUNITY_NAME VARCHAR(100) NOT NULL COMMENT '小区名称',
+      BUILDING_NO VARCHAR(20) NOT NULL COMMENT '楼栋号',
+      UNIT_NO VARCHAR(20) NULL COMMENT '单元号',
+      ROOM_NO VARCHAR(20) NOT NULL COMMENT '房间号',
+      ADDRESS VARCHAR(255) NULL COMMENT '详细地址',
+      BUILDING_AREA DECIMAL(10, 2) NULL COMMENT '建筑面积（平方米）',
+      USE_STATUS VARCHAR(20) NULL COMMENT '使用状态',
+      PRIMARY KEY (ID),
+      UNIQUE KEY UK_DEMO_HOUSE_CODE (HOUSE_CODE)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='房屋基础信息表：用于演示房屋档案与物理表关联'
+
+  create_resident_info: |
+    CREATE TABLE IF NOT EXISTS aitest.AI_PLATFORM_DEMO_RESIDENT_INFO (
+      ID INT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+      HOUSE_CODE VARCHAR(32) NOT NULL COMMENT '房屋编码',
+      RESIDENT_NAME VARCHAR(55) NOT NULL COMMENT '住户姓名',
+      RELATION_TYPE VARCHAR(30) NULL COMMENT '与房屋关系',
+      CONTACT_PHONE VARCHAR(32) NULL COMMENT '联系电话',
+      MOVE_IN_DATE DATE NULL COMMENT '入住日期',
+      ENABLED TINYINT NOT NULL DEFAULT 1 COMMENT '是否有效',
+      PRIMARY KEY (ID),
+      KEY IDX_DEMO_RESIDENT_HOUSE_CODE (HOUSE_CODE)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='住户信息表：用于演示住户与房屋的业务关系'
+
+  create_property_fee: |
+    CREATE TABLE IF NOT EXISTS aitest.AI_PLATFORM_DEMO_PROPERTY_FEE (
+      ID INT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+      HOUSE_CODE VARCHAR(32) NOT NULL COMMENT '房屋编码',
+      FEE_MONTH CHAR(7) NOT NULL COMMENT '费用月份（YYYY-MM）',
+      FEE_AMOUNT DECIMAL(12, 2) NOT NULL DEFAULT 0 COMMENT '应缴金额',
+      PAY_STATUS VARCHAR(20) NOT NULL DEFAULT 'UNPAID' COMMENT '缴费状态',
+      PAY_TIME DATETIME NULL COMMENT '缴费时间',
+      PRIMARY KEY (ID),
+      UNIQUE KEY UK_DEMO_HOUSE_FEE_MONTH (HOUSE_CODE, FEE_MONTH)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='物业缴费表：用于演示房屋物业费用记录'
+
+  seed_house_info: |
+    INSERT INTO aitest.AI_PLATFORM_DEMO_HOUSE_INFO (
+      ID,
+      HOUSE_CODE,
+      COMMUNITY_NAME,
+      BUILDING_NO,
+      UNIT_NO,
+      ROOM_NO,
+      ADDRESS,
+      BUILDING_AREA,
+      USE_STATUS
+    ) VALUES
+      (1001, 'HOUSE-A-01-0101', '春和演示小区', '1号楼', '1单元', '101', '演示路1号1号楼1单元101室', 89.50, '自住'),
+      (1002, 'HOUSE-A-01-0102', '春和演示小区', '1号楼', '1单元', '102', '演示路1号1号楼1单元102室', 76.20, '空置'),
+      (1003, 'HOUSE-A-02-0201', '春和演示小区', '2号楼', '2单元', '201', '演示路1号2号楼2单元201室', 112.80, '出租'),
+      (1004, 'HOUSE-B-03-0301', '景明演示社区', '3号楼', '1单元', '301', '样例街8号3号楼1单元301室', 95.00, '自住')
+    ON DUPLICATE KEY UPDATE
+      COMMUNITY_NAME = VALUES(COMMUNITY_NAME),
+      BUILDING_NO = VALUES(BUILDING_NO),
+      UNIT_NO = VALUES(UNIT_NO),
+      ROOM_NO = VALUES(ROOM_NO),
+      ADDRESS = VALUES(ADDRESS),
+      BUILDING_AREA = VALUES(BUILDING_AREA),
+      USE_STATUS = VALUES(USE_STATUS)
+
+  seed_resident_info: |
+    INSERT INTO aitest.AI_PLATFORM_DEMO_RESIDENT_INFO (
+      ID,
+      HOUSE_CODE,
+      RESIDENT_NAME,
+      RELATION_TYPE,
+      CONTACT_PHONE,
+      MOVE_IN_DATE,
+      ENABLED
+    ) VALUES
+      (1001, 'HOUSE-A-01-0101', '测试住户甲', '产权人', 'TEST-PHONE-001', '2024-01-15', 1),
+      (1002, 'HOUSE-A-01-0101', '测试住户乙', '家庭成员', 'TEST-PHONE-002', '2024-01-15', 1),
+      (1003, 'HOUSE-A-02-0201', '测试租户甲', '承租人', 'TEST-PHONE-003', '2025-06-01', 1),
+      (1004, 'HOUSE-A-02-0201', '测试租户乙', '共同居住人', 'TEST-PHONE-004', '2025-06-01', 1),
+      (1005, 'HOUSE-B-03-0301', '测试住户丙', '产权人', 'TEST-PHONE-005', '2023-09-20', 1)
+    ON DUPLICATE KEY UPDATE
+      HOUSE_CODE = VALUES(HOUSE_CODE),
+      RESIDENT_NAME = VALUES(RESIDENT_NAME),
+      RELATION_TYPE = VALUES(RELATION_TYPE),
+      CONTACT_PHONE = VALUES(CONTACT_PHONE),
+      MOVE_IN_DATE = VALUES(MOVE_IN_DATE),
+      ENABLED = VALUES(ENABLED)
+
+  seed_property_fee: |
+    INSERT INTO aitest.AI_PLATFORM_DEMO_PROPERTY_FEE (
+      ID,
+      HOUSE_CODE,
+      FEE_MONTH,
+      FEE_AMOUNT,
+      PAY_STATUS,
+      PAY_TIME
+    ) VALUES
+      (1001, 'HOUSE-A-01-0101', '2026-07', 268.50, '已缴', '2026-07-08 10:20:00'),
+      (1002, 'HOUSE-A-01-0101', '2026-08', 268.50, '已缴', '2026-08-06 14:35:00'),
+      (1003, 'HOUSE-A-01-0102', '2026-07', 228.60, '未缴', NULL),
+      (1004, 'HOUSE-A-01-0102', '2026-08', 228.60, '未缴', NULL),
+      (1005, 'HOUSE-A-02-0201', '2026-07', 338.40, '已缴', '2026-07-12 09:10:00'),
+      (1006, 'HOUSE-A-02-0201', '2026-08', 338.40, '未缴', NULL),
+      (1007, 'HOUSE-B-03-0301', '2026-07', 285.00, '已缴', '2026-07-05 16:45:00'),
+      (1008, 'HOUSE-B-03-0301', '2026-08', 285.00, '已缴', '2026-08-04 11:00:00')
+    ON DUPLICATE KEY UPDATE
+      HOUSE_CODE = VALUES(HOUSE_CODE),
+      FEE_MONTH = VALUES(FEE_MONTH),
+      FEE_AMOUNT = VALUES(FEE_AMOUNT),
+      PAY_STATUS = VALUES(PAY_STATUS),
+      PAY_TIME = VALUES(PAY_TIME)

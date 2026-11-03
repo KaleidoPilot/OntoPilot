@@ -1,0 +1,4 @@
+# 仅安装到服务器独立的图谱Python环境，禁止和主项目requirements.txt混装。
+# SDK使用自定义OpenAI兼容回调，不安装LightRAG API服务器的可选依赖。
+lightrag-hku==1.5.7
+openai==2.53.0

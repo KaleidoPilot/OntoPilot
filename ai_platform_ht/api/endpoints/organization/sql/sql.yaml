@@ -1,0 +1,88 @@
+organization:
+  count: |
+    SELECT COUNT(*) AS total
+    FROM ORGANIZATION
+    WHERE REMOVED = 0
+      AND (:orgId IS NULL OR ID = :orgId)
+      AND (:keyword IS NULL OR ORG_CODE LIKE CONCAT('%', :keyword, '%') OR NAME LIKE CONCAT('%', :keyword, '%'))
+      AND (:enabled IS NULL OR ENABLED = :enabled)
+
+  list: |
+    SELECT
+      ID AS id,
+      ORG_CODE AS orgCode,
+      NAME AS name,
+      REMARKS AS remarks,
+      ENABLED AS enabled,
+      CREATE_USER_NAME AS createUserName,
+      CREATE_TIME AS createTime,
+      UPDATE_USER_NAME AS updateUserName,
+      UPDATE_TIME AS updateTime
+    FROM ORGANIZATION
+    WHERE REMOVED = 0
+      AND (:orgId IS NULL OR ID = :orgId)
+      AND (:keyword IS NULL OR ORG_CODE LIKE CONCAT('%', :keyword, '%') OR NAME LIKE CONCAT('%', :keyword, '%'))
+      AND (:enabled IS NULL OR ENABLED = :enabled)
+    ORDER BY ID DESC
+    LIMIT :limit OFFSET :offset
+
+  options: |
+    SELECT ID AS id, ORG_CODE AS orgCode, NAME AS name
+    FROM ORGANIZATION
+    WHERE ENABLED = 1 AND REMOVED = 0
+    ORDER BY NAME, ID
+
+  find_by_id: |
+    SELECT ID AS id, ORG_CODE AS orgCode, NAME AS name, REMARKS AS remarks, ENABLED AS enabled
+    FROM ORGANIZATION
+    WHERE ID = :id AND REMOVED = 0
+
+  find_active_by_id: |
+    SELECT ID AS id, ORG_CODE AS orgCode, NAME AS name
+    FROM ORGANIZATION
+    WHERE ID = :id AND ENABLED = 1 AND REMOVED = 0
+
+  find_by_code: |
+    SELECT ID AS id
+    FROM ORGANIZATION
+    WHERE ORG_CODE = :orgCode AND ID <> :excludeId AND REMOVED = 0
+
+  insert: |
+    INSERT INTO ORGANIZATION (
+      ORG_CODE, NAME, REMARKS, ENABLED, REMOVED,
+      CREATE_USER_ID, CREATE_USER_NAME, CREATE_TIME
+    ) VALUES (
+      :orgCode, :name, :remarks, :enabled, 0,
+      :createUserId, :createUserName, :createTime
+    )
+
+  update: |
+    UPDATE ORGANIZATION
+    SET ORG_CODE = COALESCE(:orgCode, ORG_CODE),
+        NAME = COALESCE(:name, NAME),
+        REMARKS = :remarks,
+        ENABLED = COALESCE(:enabled, ENABLED),
+        UPDATE_USER_ID = :updateUserId,
+        UPDATE_USER_NAME = :updateUserName,
+        UPDATE_TIME = :updateTime
+    WHERE ID = :id AND REMOVED = 0
+
+  reference_counts: |
+    SELECT
+      (SELECT COUNT(*) FROM USER_INFO WHERE ORG_ID = :id AND REMOVED = 0) AS internalAdminCount,
+      (SELECT COUNT(*) FROM PROJECT_GROUP WHERE ORG_ID = :id) AS projectGroupCount,
+      (SELECT COUNT(*) FROM AI_TENANT WHERE ORG_ID = :id) AS tenantCount,
+      (SELECT COUNT(*) FROM USER_GROUP WHERE ORG_ID = :id) AS userGroupCount,
+      (SELECT COUNT(*) FROM SKILL WHERE ORG_ID = :id) AS skillCount,
+      (SELECT COUNT(*) FROM SKILL_GROUP WHERE ORG_ID = :id) AS skillGroupCount,
+      (SELECT COUNT(*) FROM SKILL_SHARE WHERE ORG_ID = :id) AS skillShareCount,
+      (SELECT COUNT(*) FROM SKILL_LIBRARY WHERE ORG_ID = :id) AS skillLibraryCount,
+      (SELECT COUNT(*) FROM AI_AGENT WHERE ORG_ID = :id) AS agentCount,
+      (SELECT COUNT(*) FROM SYSTEM_CONFIG WHERE ORG_ID = :id) AS configCount,
+      (SELECT COUNT(*) FROM MODEL_CONFIG WHERE ORG_ID = :id) AS legacyModelCount,
+      (SELECT COUNT(*) FROM USER_MCP_CONFIG WHERE ORG_ID = :id) AS mcpCount,
+      (SELECT COUNT(*) FROM MCP_CATEGORY WHERE ORG_ID = :id) AS mcpCategoryCount
+
+  delete: |
+    DELETE FROM ORGANIZATION
+    WHERE ID = :id

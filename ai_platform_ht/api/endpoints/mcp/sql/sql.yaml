@@ -1,0 +1,245 @@
+schema:
+  category: |
+    CREATE TABLE MCP_CATEGORY (
+      ID BIGINT NOT NULL AUTO_INCREMENT, ORG_ID BIGINT NOT NULL, NAME VARCHAR(100) NOT NULL,
+      CREATE_USER_ID BIGINT NULL, CREATE_USER_NAME VARCHAR(55) NULL, CREATE_TIME VARCHAR(55) NULL,
+      UPDATE_USER_ID BIGINT NULL, UPDATE_USER_NAME VARCHAR(55) NULL, UPDATE_TIME VARCHAR(55) NULL,
+      PRIMARY KEY (ID), UNIQUE KEY UK_MCP_CATEGORY_NAME (ORG_ID, NAME)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='公司 MCP 分类'
+  category_upgrade: |
+    ALTER TABLE USER_MCP_CONFIG ADD COLUMN CATEGORY_ID BIGINT NULL COMMENT 'MCP 分类',
+      ADD KEY IDX_MCP_CATEGORY (ORG_ID, CATEGORY_ID)
+  company_upgrade: |
+    ALTER TABLE USER_MCP_CONFIG
+      ADD COLUMN CONFIG_SCOPE VARCHAR(16) NOT NULL DEFAULT 'personal' COMMENT 'personal 个人；company 公司',
+      ADD COLUMN VISIBILITY VARCHAR(16) NOT NULL DEFAULT 'private' COMMENT 'public 公司公用；private 指定用户',
+      ADD COLUMN ACCESS_USER_IDS_JSON TEXT NULL COMMENT '公司私有 MCP 授权用户 ID JSON 数组',
+      ADD KEY IDX_MCP_COMPANY (ORG_ID, CONFIG_SCOPE, VISIBILITY, ENABLED)
+  config: |
+    CREATE TABLE USER_MCP_CONFIG (
+      ID BIGINT NOT NULL AUTO_INCREMENT,
+      ORG_ID BIGINT NOT NULL,
+      USER_ID BIGINT NOT NULL COMMENT 'USER_INFO_WB.ID',
+      CATEGORY_ID BIGINT NULL,
+      CONFIG_SCOPE VARCHAR(16) NOT NULL DEFAULT 'personal' COMMENT 'personal 个人；company 公司，USER_ID=0',
+      VISIBILITY VARCHAR(16) NOT NULL DEFAULT 'private',
+      ACCESS_USER_IDS_JSON TEXT NULL,
+      NAME VARCHAR(100) NOT NULL,
+      URL VARCHAR(2048) NOT NULL,
+      AUTH_TYPE VARCHAR(16) NOT NULL DEFAULT 'none',
+      SECRET_CIPHER TEXT NULL COMMENT '加密凭据，不存明文',
+      TOOL_SNAPSHOT_JSON LONGTEXT NULL,
+      SELECTED_TOOLS_JSON TEXT NULL,
+      CALL_STATE_JSON LONGTEXT NULL COMMENT '短期操作确认状态，防止重复执行',
+      ENABLED TINYINT NOT NULL DEFAULT 1,
+      CREATE_USER_ID BIGINT NULL, CREATE_USER_NAME VARCHAR(55) NULL, CREATE_TIME VARCHAR(55) NULL,
+      UPDATE_USER_ID BIGINT NULL, UPDATE_USER_NAME VARCHAR(55) NULL, UPDATE_TIME VARCHAR(55) NULL,
+      PRIMARY KEY (ID), UNIQUE KEY UK_USER_MCP_NAME (ORG_ID, USER_ID, NAME),
+      KEY IDX_USER_MCP_OWNER (ORG_ID, USER_ID, ENABLED),
+      KEY IDX_MCP_COMPANY (ORG_ID, CONFIG_SCOPE, VISIBILITY, ENABLED)
+      , KEY IDX_MCP_CATEGORY (ORG_ID, CATEGORY_ID)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='个人 MCP 配置'
+  binding: |
+    CREATE TABLE USER_MCP_SKILL (
+      ID BIGINT NOT NULL AUTO_INCREMENT,
+      ORG_ID BIGINT NOT NULL, USER_ID BIGINT NOT NULL,
+      SKILL_ID INT NOT NULL, CONFIG_ID BIGINT NOT NULL,
+      TOOL_NAMES_JSON TEXT NOT NULL,
+      PRIMARY KEY (ID), UNIQUE KEY UK_USER_MCP_SKILL (ORG_ID, USER_ID, SKILL_ID, CONFIG_ID),
+      KEY IDX_USER_MCP_CONFIG (CONFIG_ID)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='个人私有技能 MCP 工具绑定'
+config:
+  list: |
+    SELECT ID AS id, CATEGORY_ID AS categoryId, NAME AS name, URL AS url, AUTH_TYPE AS authType, ENABLED AS enabled,
+      (SECRET_CIPHER IS NOT NULL) AS hasCredential, TOOL_SNAPSHOT_JSON AS toolsJson,
+      SELECTED_TOOLS_JSON AS selectedToolsJson
+    FROM USER_MCP_CONFIG WHERE ORG_ID = :orgId AND USER_ID = :userId AND CONFIG_SCOPE = 'personal' ORDER BY ID DESC LIMIT 100
+  get: |
+    SELECT ID AS id, CATEGORY_ID AS categoryId, NAME AS name, URL AS url, AUTH_TYPE AS authType, ENABLED AS enabled,
+      SECRET_CIPHER AS secretCipher, TOOL_SNAPSHOT_JSON AS toolsJson,
+      SELECTED_TOOLS_JSON AS selectedToolsJson, CALL_STATE_JSON AS callStateJson
+    FROM USER_MCP_CONFIG WHERE ID = :id AND ORG_ID = :orgId AND USER_ID = :userId AND CONFIG_SCOPE = 'personal'
+  lock: |
+    SELECT ID AS id, CATEGORY_ID AS categoryId, NAME AS name, URL AS url, AUTH_TYPE AS authType, ENABLED AS enabled,
+      SECRET_CIPHER AS secretCipher, TOOL_SNAPSHOT_JSON AS toolsJson,
+      SELECTED_TOOLS_JSON AS selectedToolsJson, CALL_STATE_JSON AS callStateJson
+    FROM USER_MCP_CONFIG WHERE ID = :id AND ORG_ID = :orgId AND USER_ID = :userId AND CONFIG_SCOPE = 'personal' FOR UPDATE
+  insert: |
+    INSERT INTO USER_MCP_CONFIG (ORG_ID, USER_ID, CATEGORY_ID, NAME, URL, AUTH_TYPE, SECRET_CIPHER, ENABLED, TOOL_SNAPSHOT_JSON, SELECTED_TOOLS_JSON,
+      CREATE_USER_ID, CREATE_USER_NAME, CREATE_TIME)
+    VALUES (:orgId, :userId, :categoryId, :name, :url, :authType, :secretCipher, :enabled, :toolsJson, :selectedToolsJson,
+      :createUserId, :createUserName, :createTime)
+  update: |
+    UPDATE USER_MCP_CONFIG SET CATEGORY_ID = :categoryId, NAME = :name, URL = :url, AUTH_TYPE = :authType,
+      SECRET_CIPHER = :secretCipher, ENABLED = :enabled, CALL_STATE_JSON = NULL,
+      TOOL_SNAPSHOT_JSON = :toolsJson, SELECTED_TOOLS_JSON = :selectedToolsJson,
+      UPDATE_USER_ID = :updateUserId, UPDATE_USER_NAME = :updateUserName, UPDATE_TIME = :updateTime
+    WHERE ID = :id AND ORG_ID = :orgId AND USER_ID = :userId AND CONFIG_SCOPE = 'personal'
+  snapshot: |
+    UPDATE USER_MCP_CONFIG SET TOOL_SNAPSHOT_JSON = :toolsJson
+    WHERE ID = :id AND ORG_ID = :orgId AND USER_ID = :userId AND CONFIG_SCOPE = 'personal' AND URL = :url
+      AND AUTH_TYPE = :authType AND SECRET_CIPHER <=> :secretCipher
+  tools: |
+    UPDATE USER_MCP_CONFIG SET SELECTED_TOOLS_JSON = :selectedToolsJson, CALL_STATE_JSON = NULL
+    WHERE ID = :id AND ORG_ID = :orgId AND USER_ID = :userId AND CONFIG_SCOPE = 'personal'
+  state: |
+    UPDATE USER_MCP_CONFIG SET CALL_STATE_JSON = :callStateJson
+    WHERE ID = :id AND ORG_ID = :orgId AND USER_ID = :userId AND CONFIG_SCOPE = 'personal'
+  delete: |
+    DELETE FROM USER_MCP_CONFIG WHERE ID = :id AND ORG_ID = :orgId AND USER_ID = :userId AND CONFIG_SCOPE = 'personal'
+  delete_user: |
+    DELETE FROM USER_MCP_CONFIG WHERE ORG_ID = :orgId AND CONFIG_SCOPE = 'personal' AND FIND_IN_SET(USER_ID, :userIds) > 0
+binding:
+  skill_lock: |
+    SELECT ID AS id, SKILL_TYPE AS skillType, USER_ID AS userId FROM SKILL
+    WHERE ID = :skillId AND ORG_ID = :orgId AND REMOVED = 0 FOR UPDATE
+  skill_get: |
+    SELECT s.ID AS id, s.SKILL_TYPE AS skillType, s.USER_ID AS userId,
+      s.PROJECT_GROUP_ID AS projectGroupId, s.SKILL_NAME AS name, s.RULE_CONTENT AS rules,
+      s.SKILL_LEVEL_TYPE AS levelType, s.SUB_SKILL_IDS AS subSkillIds, s.TABLE_IDS AS tableIds, s.ENABLED AS enabled
+    FROM SKILL s WHERE s.ID = :skillId AND s.ORG_ID = :orgId AND s.REMOVED = 0
+  project_active: |
+    SELECT g.ID AS id FROM PROJECT_GROUP g JOIN PROJECT_GROUP root ON root.ID = g.PARENT_ID AND root.ORG_ID = g.ORG_ID
+    WHERE g.ID = :id AND g.ORG_ID = :orgId AND g.LEVEL = 1 AND g.ENABLED = 1 AND g.REMOVED = 0
+      AND root.LEVEL = 0 AND root.PARENT_ID IS NULL AND root.ENABLED = 1 AND root.REMOVED = 0
+  config_lock: |
+    SELECT ID AS id, USER_ID AS userId, CONFIG_SCOPE AS configScope, VISIBILITY AS visibility,
+      ACCESS_USER_IDS_JSON AS accessUserIdsJson, SELECTED_TOOLS_JSON AS selectedToolsJson, ENABLED AS enabled
+    FROM USER_MCP_CONFIG WHERE ID = :id AND ORG_ID = :orgId FOR UPDATE
+  public_options: |
+    SELECT ID AS id, CATEGORY_ID AS categoryId, NAME AS name, URL AS url, AUTH_TYPE AS authType, ENABLED AS enabled,
+      TOOL_SNAPSHOT_JSON AS toolsJson, SELECTED_TOOLS_JSON AS selectedToolsJson,
+      CONFIG_SCOPE AS configScope, VISIBILITY AS visibility
+    FROM USER_MCP_CONFIG WHERE ORG_ID = :orgId AND CONFIG_SCOPE = 'company' AND VISIBILITY = 'public' AND ENABLED = 1
+    ORDER BY ID DESC
+  owner: |
+    SELECT u.ID AS id FROM USER_INFO_WB u JOIN USER_GROUP g ON g.ID = u.GROUP_ID
+    WHERE u.ID = :userId AND g.ORG_ID = :orgId AND u.ENABLED = 1 AND g.ENABLED = 1
+  delete_all_skill: |
+    DELETE FROM USER_MCP_SKILL WHERE ORG_ID = :orgId AND SKILL_ID = :skillId
+  delete_orphans: |
+    DELETE FROM USER_MCP_SKILL WHERE ORG_ID = :orgId AND NOT EXISTS
+      (SELECT 1 FROM SKILL s WHERE s.ID = USER_MCP_SKILL.SKILL_ID AND s.ORG_ID = USER_MCP_SKILL.ORG_ID AND s.REMOVED = 0)
+  list: |
+    SELECT b.CONFIG_ID AS configId, b.TOOL_NAMES_JSON AS toolNamesJson
+    FROM USER_MCP_SKILL b JOIN USER_MCP_CONFIG c ON c.ID = b.CONFIG_ID
+      AND c.ORG_ID = b.ORG_ID
+    WHERE b.ORG_ID = :orgId AND b.USER_ID = :userId AND b.SKILL_ID = :skillId
+  insert: |
+    INSERT INTO USER_MCP_SKILL (ORG_ID, USER_ID, SKILL_ID, CONFIG_ID, TOOL_NAMES_JSON)
+    VALUES (:orgId, :userId, :skillId, :configId, :toolNamesJson)
+  delete_skill: |
+    DELETE FROM USER_MCP_SKILL WHERE ORG_ID = :orgId AND USER_ID = :userId AND SKILL_ID = :skillId
+  delete_config: |
+    DELETE FROM USER_MCP_SKILL WHERE ORG_ID = :orgId AND USER_ID = :userId AND CONFIG_ID = :id
+  delete_user: |
+    DELETE FROM USER_MCP_SKILL WHERE ORG_ID = :orgId AND FIND_IN_SET(USER_ID, :userIds) > 0
+  delete_company_config: |
+    DELETE FROM USER_MCP_SKILL WHERE ORG_ID = :orgId AND CONFIG_ID = :id
+available:
+  list: |
+    SELECT ID AS id, CATEGORY_ID AS categoryId, NAME AS name, URL AS url, AUTH_TYPE AS authType, ENABLED AS enabled,
+      (SECRET_CIPHER IS NOT NULL) AS hasCredential, TOOL_SNAPSHOT_JSON AS toolsJson,
+      SELECTED_TOOLS_JSON AS selectedToolsJson, CONFIG_SCOPE AS configScope, VISIBILITY AS visibility
+    FROM USER_MCP_CONFIG WHERE ORG_ID = :orgId
+      AND ((CONFIG_SCOPE = 'personal' AND USER_ID = :userId)
+        OR (CONFIG_SCOPE = 'company' AND (VISIBILITY = 'public'
+          OR (VISIBILITY = 'private' AND JSON_CONTAINS(ACCESS_USER_IDS_JSON, CAST(:userId AS CHAR))))))
+    ORDER BY CONFIG_SCOPE, ID DESC
+  get: |
+    SELECT ID AS id, CATEGORY_ID AS categoryId, NAME AS name, URL AS url, AUTH_TYPE AS authType, ENABLED AS enabled,
+      SECRET_CIPHER AS secretCipher, TOOL_SNAPSHOT_JSON AS toolsJson, SELECTED_TOOLS_JSON AS selectedToolsJson,
+      CALL_STATE_JSON AS callStateJson, CONFIG_SCOPE AS configScope, VISIBILITY AS visibility
+    FROM USER_MCP_CONFIG WHERE ID = :id AND ORG_ID = :orgId
+      AND ((CONFIG_SCOPE = 'personal' AND USER_ID = :userId)
+        OR (CONFIG_SCOPE = 'company' AND (VISIBILITY = 'public'
+          OR (VISIBILITY = 'private' AND JSON_CONTAINS(ACCESS_USER_IDS_JSON, CAST(:userId AS CHAR))))))
+  lock: |
+    SELECT ID AS id, ENABLED AS enabled, CALL_STATE_JSON AS callStateJson, CONFIG_SCOPE AS configScope
+    FROM USER_MCP_CONFIG WHERE ID = :id AND ORG_ID = :orgId
+      AND ((CONFIG_SCOPE = 'personal' AND USER_ID = :userId)
+        OR (CONFIG_SCOPE = 'company' AND (VISIBILITY = 'public'
+          OR (VISIBILITY = 'private' AND JSON_CONTAINS(ACCESS_USER_IDS_JSON, CAST(:userId AS CHAR)))))) FOR UPDATE
+  state: |
+    UPDATE USER_MCP_CONFIG SET CALL_STATE_JSON = :callStateJson WHERE ID = :id AND ORG_ID = :orgId
+      AND ((CONFIG_SCOPE = 'personal' AND USER_ID = :userId)
+        OR (CONFIG_SCOPE = 'company' AND (VISIBILITY = 'public'
+          OR (VISIBILITY = 'private' AND JSON_CONTAINS(ACCESS_USER_IDS_JSON, CAST(:userId AS CHAR))))))
+company:
+  count: |
+    SELECT COUNT(*) AS total FROM USER_MCP_CONFIG WHERE ORG_ID = :orgId AND CONFIG_SCOPE = 'company'
+      AND (:keyword IS NULL OR NAME LIKE CONCAT('%', :keyword, '%') OR URL LIKE CONCAT('%', :keyword, '%'))
+      AND (:visibility IS NULL OR VISIBILITY = :visibility) AND (:enabled IS NULL OR ENABLED = :enabled)
+      AND (:categoryId IS NULL OR (:categoryId = 0 AND CATEGORY_ID IS NULL) OR CATEGORY_ID = :categoryId)
+  list: |
+    SELECT ID AS id, CATEGORY_ID AS categoryId, NAME AS name, URL AS url, AUTH_TYPE AS authType, ENABLED AS enabled,
+      (SECRET_CIPHER IS NOT NULL) AS hasCredential, TOOL_SNAPSHOT_JSON AS toolsJson,
+      SELECTED_TOOLS_JSON AS selectedToolsJson, CONFIG_SCOPE AS configScope, VISIBILITY AS visibility,
+      ACCESS_USER_IDS_JSON AS accessUserIdsJson
+    FROM USER_MCP_CONFIG WHERE ORG_ID = :orgId AND CONFIG_SCOPE = 'company'
+      AND (:keyword IS NULL OR NAME LIKE CONCAT('%', :keyword, '%') OR URL LIKE CONCAT('%', :keyword, '%'))
+      AND (:visibility IS NULL OR VISIBILITY = :visibility) AND (:enabled IS NULL OR ENABLED = :enabled)
+      AND (:categoryId IS NULL OR (:categoryId = 0 AND CATEGORY_ID IS NULL) OR CATEGORY_ID = :categoryId)
+    ORDER BY ID DESC LIMIT :limit OFFSET :offset
+  get: |
+    SELECT ID AS id, CATEGORY_ID AS categoryId, NAME AS name, URL AS url, AUTH_TYPE AS authType, ENABLED AS enabled,
+      SECRET_CIPHER AS secretCipher, TOOL_SNAPSHOT_JSON AS toolsJson, SELECTED_TOOLS_JSON AS selectedToolsJson,
+      VISIBILITY AS visibility, ACCESS_USER_IDS_JSON AS accessUserIdsJson, CONFIG_SCOPE AS configScope
+    FROM USER_MCP_CONFIG WHERE ID = :id AND ORG_ID = :orgId AND CONFIG_SCOPE = 'company'
+  lock: |
+    SELECT ID AS id, CATEGORY_ID AS categoryId, NAME AS name, URL AS url, AUTH_TYPE AS authType, ENABLED AS enabled,
+      SECRET_CIPHER AS secretCipher, TOOL_SNAPSHOT_JSON AS toolsJson, SELECTED_TOOLS_JSON AS selectedToolsJson,
+      VISIBILITY AS visibility, ACCESS_USER_IDS_JSON AS accessUserIdsJson, CONFIG_SCOPE AS configScope
+    FROM USER_MCP_CONFIG WHERE ID = :id AND ORG_ID = :orgId AND CONFIG_SCOPE = 'company' FOR UPDATE
+  insert: |
+    INSERT INTO USER_MCP_CONFIG (ORG_ID, USER_ID, CATEGORY_ID, CONFIG_SCOPE, VISIBILITY, ACCESS_USER_IDS_JSON,
+      NAME, URL, AUTH_TYPE, SECRET_CIPHER, ENABLED, TOOL_SNAPSHOT_JSON, SELECTED_TOOLS_JSON, CREATE_USER_ID, CREATE_USER_NAME, CREATE_TIME)
+    VALUES (:orgId, 0, :categoryId, 'company', :visibility, :accessUserIdsJson, :name, :url, :authType, :secretCipher,
+      :enabled, :toolsJson, :selectedToolsJson, :createUserId, :createUserName, :createTime)
+  update: |
+    UPDATE USER_MCP_CONFIG SET CATEGORY_ID = :categoryId, NAME = :name, URL = :url, AUTH_TYPE = :authType, SECRET_CIPHER = :secretCipher,
+      VISIBILITY = :visibility, ACCESS_USER_IDS_JSON = :accessUserIdsJson, ENABLED = :enabled,
+      TOOL_SNAPSHOT_JSON = :toolsJson, SELECTED_TOOLS_JSON = :selectedToolsJson, CALL_STATE_JSON = NULL,
+      UPDATE_USER_ID = :updateUserId, UPDATE_USER_NAME = :updateUserName, UPDATE_TIME = :updateTime
+    WHERE ID = :id AND ORG_ID = :orgId AND CONFIG_SCOPE = 'company'
+  snapshot: |
+    UPDATE USER_MCP_CONFIG SET TOOL_SNAPSHOT_JSON = :toolsJson WHERE ID = :id AND ORG_ID = :orgId
+      AND CONFIG_SCOPE = 'company' AND URL = :url AND AUTH_TYPE = :authType AND SECRET_CIPHER <=> :secretCipher
+  tools: |
+    UPDATE USER_MCP_CONFIG SET SELECTED_TOOLS_JSON = :selectedToolsJson, CALL_STATE_JSON = NULL
+    WHERE ID = :id AND ORG_ID = :orgId AND CONFIG_SCOPE = 'company'
+  delete: |
+    DELETE FROM USER_MCP_CONFIG WHERE ID = :id AND ORG_ID = :orgId AND CONFIG_SCOPE = 'company'
+  users: |
+    SELECT u.ID AS id, u.REAL_NAME AS realName, u.ACCOUNT AS account, g.GROUP_NAME AS groupName
+    FROM USER_INFO_WB u JOIN USER_GROUP g ON g.ID = u.GROUP_ID
+    WHERE g.ORG_ID = :orgId AND u.ENABLED = 1 AND g.ENABLED = 1
+      AND (:keyword IS NULL OR u.REAL_NAME LIKE CONCAT('%', :keyword, '%') OR u.ACCOUNT LIKE CONCAT('%', :keyword, '%'))
+      AND (:ids = '' OR FIND_IN_SET(u.ID, :ids) > 0)
+    ORDER BY u.ID LIMIT 1000
+skill:
+  get: |
+    SELECT ID AS id, SKILL_NAME AS name, RULE_CONTENT AS rules, SKILL_LEVEL_TYPE AS levelType,
+      SUB_SKILL_IDS AS subSkillIds, ENABLED AS enabled
+    FROM SKILL WHERE ID = :skillId AND ORG_ID = :orgId AND USER_ID = :userId
+      AND SKILL_TYPE = 3 AND REMOVED = 0
+category:
+  list: |
+    SELECT c.ID AS id, c.NAME AS name, COUNT(m.ID) AS total
+    FROM MCP_CATEGORY c LEFT JOIN USER_MCP_CONFIG m ON m.CATEGORY_ID = c.ID AND m.ORG_ID = c.ORG_ID
+      AND m.CONFIG_SCOPE = 'company'
+    WHERE c.ORG_ID = :orgId GROUP BY c.ID, c.NAME ORDER BY c.ID DESC
+  names: |
+    SELECT ID AS id, NAME AS name FROM MCP_CATEGORY WHERE ORG_ID = :orgId ORDER BY ID DESC
+  lock: |
+    SELECT ID AS id, NAME AS name FROM MCP_CATEGORY WHERE ID = :id AND ORG_ID = :orgId FOR UPDATE
+  insert: |
+    INSERT INTO MCP_CATEGORY (ORG_ID, NAME, CREATE_USER_ID, CREATE_USER_NAME, CREATE_TIME)
+    VALUES (:orgId, :name, :createUserId, :createUserName, :createTime)
+  update: |
+    UPDATE MCP_CATEGORY SET NAME = :name, UPDATE_USER_ID = :updateUserId, UPDATE_USER_NAME = :updateUserName,
+      UPDATE_TIME = :updateTime WHERE ID = :id AND ORG_ID = :orgId
+  references: |
+    SELECT COUNT(*) AS total FROM USER_MCP_CONFIG WHERE CATEGORY_ID = :id AND ORG_ID = :orgId
+  delete: |
+    DELETE FROM MCP_CATEGORY WHERE ID = :id AND ORG_ID = :orgId

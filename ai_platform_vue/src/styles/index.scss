@@ -1,0 +1,146 @@
+:root {
+  --bg-dark: #f0f2f5;
+  --bg-card: #ffffff;
+  --text-primary: #303133;
+  --text-secondary: #909399;
+  --primary-color: #4f6ef7;
+  --accent-color: #409eff;
+  --border-color: #e4e7ed;
+  --sidebar-bg: #28334e;
+  --border-radius-base: 12px;
+  --border-radius-small: 8px;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg-dark);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+#app {
+  height: 100vh;
+}
+
+/* Element Plus Light Theme Overrides */
+.el-card {
+  background-color: var(--bg-card) !important;
+  border: none !important;
+  color: var(--text-primary) !important;
+  border-radius: var(--border-radius-base) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
+}
+
+.el-input__wrapper {
+  border-radius: 20px !important;
+  background-color: #f5f7fa !important;
+  box-shadow: none !important;
+  border: 1px solid transparent !important;
+  &.is-focus {
+    border-color: var(--primary-color) !important;
+    background-color: #fff !important;
+  }
+}
+
+.el-button {
+  border-radius: 20px !important;
+  &--primary {
+    background-color: var(--primary-color) !important;
+    border-color: var(--primary-color) !important;
+  }
+
+  &.is-link {
+    background-color: transparent !important;
+    border-color: transparent !important;
+  }
+}
+
+.el-table {
+  background-color: transparent !important;
+  color: var(--text-primary) !important;
+  
+  th.el-table__cell {
+    background-color: #f5f7fa !important;
+    color: #606266 !important;
+    font-weight: 600 !important;
+    border-bottom: none !important;
+  }
+
+  td.el-table__cell {
+    border-bottom: 1px solid #f0f2f5 !important;
+  }
+
+  &::before {
+    display: none !important;
+  }
+}
+
+.el-menu {
+  background-color: var(--sidebar-bg) !important;
+  border-right: none !important;
+}
+
+.el-menu-item {
+  color: rgba(255, 255, 255, 0.7) !important;
+  margin: 4px 12px !important;
+  border-radius: var(--border-radius-small) !important;
+  height: 48px !important;
+  line-height: 48px !important;
+  display: flex !important;
+  align-items: center !important;
+  padding: 0 16px !important; // 展开时的内边距
+
+  .el-icon {
+    margin: 0 !important;
+    font-size: 18px !important;
+    flex-shrink: 0;
+  }
+
+  span {
+    margin-left: 12px;
+  }
+}
+
+.el-menu--collapse {
+  width: 64px !important;
+  
+  .el-menu-item {
+    margin: 4px auto !important;
+    padding: 0 !important;
+    width: 48px !important;
+    height: 48px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    
+    span {
+      display: none;
+    }
+
+    .el-icon {
+      margin: 0 !important;
+      font-size: 20px !important;
+    }
+    
+    // 强制覆盖 Element Plus 内部的 tooltip 容器样式
+    :deep(.el-tooltip__trigger) {
+      width: 100% !important;
+      height: 100% !important;
+      padding: 0 !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+    }
+  }
+}
+
+.el-menu-item.is-active {
+  color: #fff !important;
+  background-color: var(--primary-color) !important;
+  box-shadow: 0 4px 12px rgba(79, 110, 247, 0.3) !important;
+}
+
+.el-menu-item:hover {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}

@@ -1,0 +1,49 @@
+创建环境
+conda create -n 虚拟环境名称 python=3.12
+启用环境
+conda activate 虚拟环境名称
+下载依赖：
+pip install -r .\requirements.txt 
+导出依赖：
+pip freeze > requirements.txt
+运行
+python ./main.py
+
+打包
+docker build -t registry.cn-hangzhou.aliyuncs.com/fijo_dev/ttxz:2026.06.29.01.ctl .
+
+推送
+docker push registry.cn-hangzhou.aliyuncs.com/fijo_dev/ttxz:2026.06.29.01.ctl
+
+代码生成
+python utils/code_generator.py --table 表名 --module 模块名
+有使用milvus的情况下
+python utils/code_generator.py --table 表名 --module 模块名 --milvus
+
+配置文件
+APP_NAME="AI Report (Test)"  名称
+APP_ENV="test"  环境
+APP_HOST="0.0.0.0"  ip
+APP_PORT=9711  端口
+DEBUG=True
+LOG_LEVEL="DEBUG"
+LOG_FILE="app_test.log"
+
+
+---------------数据结构
+PROJECT_GROUP_ID存放项目组id
+TABLE_NAME：表名bszn_baseinfo
+TABLE_COMMENT 后续维护不需要同步默认null
+COLUMNS_JSON结构
+{
+    "ORG_CODE":{
+        "zs":"组织编码",
+        "type":"varchar(20)",
+        "remark":""
+    },
+    "JW_NAME":{
+        "zs":"居委名称",
+        "type":"varchar(20)",
+        "remark":""
+    },
+}

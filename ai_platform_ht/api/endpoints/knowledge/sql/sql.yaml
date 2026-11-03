@@ -1,0 +1,677 @@
+schema:
+  create_folders: |
+    CREATE TABLE AI_KNOWLEDGE_FOLDER (
+      ID BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      ORG_ID BIGINT NOT NULL, TENANT_ID BIGINT NOT NULL,
+      PARENT_ID BIGINT NOT NULL DEFAULT 0, FOLDER_NAME VARCHAR(100) NOT NULL,
+      DOCUMENT_KEY CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL,
+      CREATE_USER_ID BIGINT NULL, CREATE_USER_NAME VARCHAR(55) NULL, CREATE_TIME VARCHAR(55) NULL,
+      UPDATE_USER_ID BIGINT NULL, UPDATE_USER_NAME VARCHAR(55) NULL, UPDATE_TIME VARCHAR(55) NULL,
+      KEY IDX_KNOWLEDGE_DOCUMENT_PARENT (ORG_ID,TENANT_ID,PARENT_ID),
+      UNIQUE KEY UK_KNOWLEDGE_DOCUMENT_KEY (ORG_ID,TENANT_ID,DOCUMENT_KEY)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='知识库内部目录，0表示库根层'
+  add_document_binding: |
+    ALTER TABLE AI_KNOWLEDGE_FOLDER
+      ADD COLUMN DOCUMENT_KEY CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL,
+      DROP INDEX UK_KNOWLEDGE_FOLDER_NAME,
+      ADD KEY IDX_KNOWLEDGE_DOCUMENT_PARENT (ORG_ID,TENANT_ID,PARENT_ID),
+      ADD UNIQUE KEY UK_KNOWLEDGE_DOCUMENT_KEY (ORG_ID,TENANT_ID,DOCUMENT_KEY)
+  add_record_folder: |
+    ALTER TABLE AI_KNOWLEDGE ADD COLUMN FOLDER_ID BIGINT NOT NULL DEFAULT 0,
+      ADD INDEX IDX_KNOWLEDGE_FOLDER (TENANT_ID,FOLDER_ID,REMOVED)
+  add_graph_folder: |
+    ALTER TABLE AI_KNOWLEDGE_GRAPH ADD COLUMN FOLDER_ID BIGINT NOT NULL DEFAULT 0,
+      DROP INDEX UK_AI_KNOWLEDGE_GRAPH_TENANT,
+      ADD UNIQUE KEY UK_AI_KNOWLEDGE_GRAPH_SCOPE (ORG_ID,TENANT_ID,FOLDER_ID)
+  add_scope: |
+    ALTER TABLE AI_TENANT
+      ADD COLUMN SCOPE_TYPE TINYINT NOT NULL DEFAULT 1 COMMENT '1公司公有 2公司私有 3个人知识库' AFTER ORG_ID,
+      ADD COLUMN OWNER_USER_ID BIGINT NULL COMMENT '个人知识库所属外部用户USER_INFO_WB.ID' AFTER SCOPE_TYPE,
+      ADD COLUMN ACCESS_USER_IDS VARCHAR(4000) NULL COMMENT '公司私有授权外部用户ID，英文逗号分隔' AFTER OWNER_USER_ID,
+      ADD COLUMN ACCESS_GROUP_IDS VARCHAR(4000) NULL COMMENT '公司私有授权用户组ID，英文逗号分隔' AFTER ACCESS_USER_IDS,
+      ADD KEY IDX_AI_TENANT_SCOPE (ORG_ID, SCOPE_TYPE, OWNER_USER_ID, ENABLED, REMOVED)
+
+folder:
+  list: |
+    SELECT ID AS id,PARENT_ID AS parentId,FOLDER_NAME AS folderName,DOCUMENT_KEY AS documentKey FROM AI_KNOWLEDGE_FOLDER
+    WHERE ORG_ID=:orgId AND TENANT_ID=:tenantId ORDER BY FOLDER_NAME,ID
+  tenant_lock: |
+    SELECT ID AS id FROM AI_TENANT WHERE ID=:tenantId AND ORG_ID=:orgId AND REMOVED=0 FOR UPDATE
+  insert: |
+    INSERT INTO AI_KNOWLEDGE_FOLDER (ORG_ID,TENANT_ID,PARENT_ID,FOLDER_NAME,DOCUMENT_KEY,CREATE_USER_ID,CREATE_USER_NAME,CREATE_TIME)
+    VALUES (:orgId,:tenantId,:parentId,:folderName,:documentKey,:createUserId,:createUserName,:createTime)
+  duplicate_name: |
+    SELECT ID AS id FROM AI_KNOWLEDGE_FOLDER WHERE ORG_ID=:orgId AND TENANT_ID=:tenantId
+      AND PARENT_ID=:parentId AND FOLDER_NAME=:folderName AND DOCUMENT_KEY IS NULL
+      AND (:folderId IS NULL OR ID<>:folderId)
+  source_record: |
+    SELECT k.ID AS id,k.FILE_ID AS fileId,k.FILE_URL AS fileUrl,k.TITLE AS title,k.FOLDER_ID AS folderId
+    FROM AI_KNOWLEDGE k JOIN AI_TENANT t ON t.ID=k.TENANT_ID AND t.ORG_ID=:orgId
+    WHERE k.ID=:recordId AND k.TENANT_ID=:tenantId AND k.REMOVED=0 AND t.REMOVED=0
+  document_rebind: |
+    UPDATE AI_KNOWLEDGE_FOLDER SET DOCUMENT_KEY=:newDocumentKey,FOLDER_NAME=:folderName,
+      UPDATE_USER_ID=:updateUserId,UPDATE_USER_NAME=:updateUserName,UPDATE_TIME=:updateTime
+    WHERE ORG_ID=:orgId AND TENANT_ID=:tenantId AND DOCUMENT_KEY=:documentKey
+  update: |
+    UPDATE AI_KNOWLEDGE_FOLDER SET FOLDER_NAME=:folderName,PARENT_ID=:parentId,
+      UPDATE_USER_ID=:updateUserId,UPDATE_USER_NAME=:updateUserName,UPDATE_TIME=:updateTime
+    WHERE ID=:folderId AND ORG_ID=:orgId AND TENANT_ID=:tenantId
+  delete: |
+    DELETE FROM AI_KNOWLEDGE_FOLDER WHERE ID=:folderId AND ORG_ID=:orgId AND TENANT_ID=:tenantId
+  references: |
+    SELECT COUNT(*) AS total FROM AI_KNOWLEDGE WHERE TENANT_ID=:tenantId AND FOLDER_ID=:folderId AND REMOVED=0
+  records_lock: |
+    SELECT ID AS id,FILE_ID AS fileId FROM AI_KNOWLEDGE
+    WHERE TENANT_ID=:tenantId AND REMOVED=0 AND FIND_IN_SET(ID,:recordIds)>0 ORDER BY ID FOR UPDATE
+  move_documents: |
+    UPDATE AI_KNOWLEDGE SET FOLDER_ID=:folderId,UPDATE_USER_ID=:updateUserId,
+      UPDATE_USER_NAME=:updateUserName,UPDATE_TIME=:updateTime
+    WHERE TENANT_ID=:tenantId AND REMOVED=0
+      AND (FIND_IN_SET(ID,:recordIds)>0 OR (FILE_ID<>'' AND FIND_IN_SET(FILE_ID,:fileIds)>0))
+  retrieval_records: |
+    SELECT ID AS id FROM AI_KNOWLEDGE
+    WHERE TENANT_ID=:tenantId AND REMOVED=0 AND ENABLED=1
+      AND (FIND_IN_SET(FOLDER_ID,:folderIds)>0 OR
+        FIND_IN_SET(SHA2(CASE WHEN COALESCE(FILE_ID,'')<>'' THEN CONCAT('file:',FILE_ID) ELSE CONCAT('record:',ID) END,256),:documentKeys)>0)
+  graph_delete: |
+    DELETE FROM AI_KNOWLEDGE_GRAPH WHERE ORG_ID=:orgId AND TENANT_ID=:tenantId AND FOLDER_ID=:folderId
+  count_tenant: |
+    SELECT COUNT(*) AS total FROM AI_KNOWLEDGE_FOLDER WHERE ORG_ID=:orgId AND TENANT_ID=:tenantId
+
+tenant:
+  list_page: |
+    SELECT
+      tenant.ID AS id,
+      tenant.ORG_ID AS orgId,
+      tenant.SCOPE_TYPE AS scopeType,
+      tenant.OWNER_USER_ID AS ownerUserId,
+      tenant.ACCESS_USER_IDS AS accessUserIds,
+      tenant.ACCESS_GROUP_IDS AS accessGroupIds,
+      tenant.TENANT_NAME AS tenantName,
+      tenant.REMARKS AS remarks,
+      tenant.ENABLED AS enabled,
+      tenant.CREATE_TIME AS createTime,
+      tenant.UPDATE_TIME AS updateTime,
+      COUNT(DISTINCT IFNULL(NULLIF(knowledge.FILE_ID, ''), knowledge.ID)) AS knowledgeCount
+    FROM AI_TENANT tenant
+    LEFT JOIN AI_KNOWLEDGE knowledge
+      ON knowledge.TENANT_ID = tenant.ID
+      AND knowledge.REMOVED = 0
+    WHERE tenant.REMOVED = 0
+      AND tenant.ORG_ID = :orgId
+      AND tenant.SCOPE_TYPE IN (1, 2)
+      AND (:keyword IS NULL OR tenant.TENANT_NAME LIKE CONCAT('%', :keyword, '%') OR tenant.REMARKS LIKE CONCAT('%', :keyword, '%'))
+      AND (:enabled IS NULL OR tenant.ENABLED = :enabled)
+    GROUP BY tenant.ID, tenant.ORG_ID, tenant.SCOPE_TYPE, tenant.OWNER_USER_ID, tenant.ACCESS_USER_IDS, tenant.ACCESS_GROUP_IDS, tenant.TENANT_NAME, tenant.REMARKS, tenant.ENABLED, tenant.CREATE_TIME, tenant.UPDATE_TIME
+    ORDER BY tenant.ID DESC
+    LIMIT :limit OFFSET :offset
+  count_page: |
+    SELECT COUNT(*) AS total
+    FROM AI_TENANT tenant
+    WHERE tenant.REMOVED = 0
+      AND tenant.ORG_ID = :orgId
+      AND tenant.SCOPE_TYPE IN (1, 2)
+      AND (:keyword IS NULL OR tenant.TENANT_NAME LIKE CONCAT('%', :keyword, '%') OR tenant.REMARKS LIKE CONCAT('%', :keyword, '%'))
+      AND (:enabled IS NULL OR tenant.ENABLED = :enabled)
+  find_by_id: |
+    SELECT
+      tenant.ID AS id,
+      tenant.ORG_ID AS orgId,
+      tenant.SCOPE_TYPE AS scopeType,
+      tenant.OWNER_USER_ID AS ownerUserId,
+      tenant.ACCESS_USER_IDS AS accessUserIds,
+      tenant.ACCESS_GROUP_IDS AS accessGroupIds,
+      tenant.TENANT_NAME AS tenantName,
+      tenant.REMARKS AS remarks,
+      tenant.ENABLED AS enabled,
+      tenant.REMOVED AS removed,
+      tenant.CREATE_TIME AS createTime,
+      tenant.UPDATE_TIME AS updateTime,
+      (
+        SELECT COUNT(DISTINCT IFNULL(NULLIF(knowledge.FILE_ID, ''), knowledge.ID))
+        FROM AI_KNOWLEDGE knowledge
+        WHERE knowledge.TENANT_ID = tenant.ID
+          AND knowledge.REMOVED = 0
+      ) AS knowledgeCount
+    FROM AI_TENANT tenant
+    WHERE tenant.ID = :tenantId
+      AND tenant.ORG_ID = :orgId
+      AND tenant.REMOVED = 0
+    LIMIT 1
+  ids_usable: |
+    SELECT tenant.ID AS id
+    FROM AI_TENANT tenant
+    WHERE FIND_IN_SET(CAST(tenant.ID AS CHAR), :tenantIds) > 0
+      AND tenant.ORG_ID = :orgId
+      AND tenant.REMOVED = 0
+      AND tenant.ENABLED = 1
+      AND (
+        tenant.SCOPE_TYPE = 1
+        OR (
+          tenant.SCOPE_TYPE = 2
+          AND (
+            :userType = 'internal'
+            OR FIND_IN_SET(CAST(:userId AS CHAR), tenant.ACCESS_USER_IDS) > 0
+            OR FIND_IN_SET(CAST(:groupId AS CHAR), tenant.ACCESS_GROUP_IDS) > 0
+          )
+        )
+        OR (
+          tenant.SCOPE_TYPE = 3
+          AND :userType = 'external'
+          AND tenant.OWNER_USER_ID = :userId
+        )
+      )
+  # KaleidoPilot 兜底召回用：当前调用者有权检索的全部知识库 id。
+  # 与 ids_usable 的区别是不限定具体 id 列表，直接按公司 + 授权范围展开；
+  # 内部用户可检索全部公司私有库，外部用户按个人/用户组授权过滤。
+  ids_all_usable: |
+    SELECT tenant.ID AS id
+    FROM AI_TENANT tenant
+    WHERE tenant.ORG_ID = :orgId
+      AND tenant.REMOVED = 0
+      AND tenant.ENABLED = 1
+      AND (
+        tenant.SCOPE_TYPE = 1
+        OR (
+          tenant.SCOPE_TYPE = 2
+          AND (
+            :userType = 'internal'
+            OR FIND_IN_SET(CAST(:userId AS CHAR), tenant.ACCESS_USER_IDS) > 0
+            OR FIND_IN_SET(CAST(:groupId AS CHAR), tenant.ACCESS_GROUP_IDS) > 0
+          )
+        )
+        OR (
+          tenant.SCOPE_TYPE = 3
+          AND :userType = 'external'
+          AND tenant.OWNER_USER_ID = :userId
+        )
+      )
+    ORDER BY tenant.UPDATE_TIME DESC, tenant.ID DESC
+  usable_company: |
+    SELECT
+      tenant.ID AS id,
+      tenant.ORG_ID AS orgId,
+      tenant.SCOPE_TYPE AS scopeType,
+      tenant.TENANT_NAME AS tenantName,
+      tenant.REMARKS AS remarks,
+      tenant.ENABLED AS enabled,
+      COUNT(DISTINCT IFNULL(NULLIF(knowledge.FILE_ID, ''), knowledge.ID)) AS knowledgeCount
+    FROM AI_TENANT tenant
+    LEFT JOIN AI_KNOWLEDGE knowledge
+      ON knowledge.TENANT_ID = tenant.ID AND knowledge.REMOVED = 0
+    WHERE tenant.REMOVED = 0
+      AND tenant.ORG_ID = :orgId
+      AND tenant.ENABLED = 1
+      AND (
+        tenant.SCOPE_TYPE = 1
+        OR (
+          tenant.SCOPE_TYPE = 2
+          AND (
+            FIND_IN_SET(CAST(:userId AS CHAR), tenant.ACCESS_USER_IDS) > 0
+            OR FIND_IN_SET(CAST(:groupId AS CHAR), tenant.ACCESS_GROUP_IDS) > 0
+          )
+        )
+      )
+      AND (:keyword IS NULL OR tenant.TENANT_NAME LIKE CONCAT('%', :keyword, '%') OR tenant.REMARKS LIKE CONCAT('%', :keyword, '%'))
+    GROUP BY tenant.ID, tenant.ORG_ID, tenant.SCOPE_TYPE, tenant.TENANT_NAME, tenant.REMARKS, tenant.ENABLED
+    ORDER BY tenant.ID DESC
+    LIMIT :limit OFFSET :offset
+  count_usable_company: |
+    SELECT COUNT(*) AS total
+    FROM AI_TENANT tenant
+    WHERE tenant.REMOVED = 0
+      AND tenant.ORG_ID = :orgId
+      AND tenant.ENABLED = 1
+      AND (
+        tenant.SCOPE_TYPE = 1
+        OR (
+          tenant.SCOPE_TYPE = 2
+          AND (
+            FIND_IN_SET(CAST(:userId AS CHAR), tenant.ACCESS_USER_IDS) > 0
+            OR FIND_IN_SET(CAST(:groupId AS CHAR), tenant.ACCESS_GROUP_IDS) > 0
+          )
+        )
+      )
+      AND (:keyword IS NULL OR tenant.TENANT_NAME LIKE CONCAT('%', :keyword, '%') OR tenant.REMARKS LIKE CONCAT('%', :keyword, '%'))
+  usable_personal: |
+    SELECT
+      tenant.ID AS id,
+      tenant.ORG_ID AS orgId,
+      tenant.SCOPE_TYPE AS scopeType,
+      tenant.TENANT_NAME AS tenantName,
+      tenant.REMARKS AS remarks,
+      tenant.ENABLED AS enabled,
+      COUNT(DISTINCT IFNULL(NULLIF(knowledge.FILE_ID, ''), knowledge.ID)) AS knowledgeCount
+    FROM AI_TENANT tenant
+    LEFT JOIN AI_KNOWLEDGE knowledge
+      ON knowledge.TENANT_ID = tenant.ID AND knowledge.REMOVED = 0
+    WHERE tenant.REMOVED = 0
+      AND tenant.ORG_ID = :orgId
+      AND tenant.SCOPE_TYPE = 3
+      AND tenant.OWNER_USER_ID = :userId
+      AND (:keyword IS NULL OR tenant.TENANT_NAME LIKE CONCAT('%', :keyword, '%') OR tenant.REMARKS LIKE CONCAT('%', :keyword, '%'))
+    GROUP BY tenant.ID, tenant.ORG_ID, tenant.SCOPE_TYPE, tenant.TENANT_NAME, tenant.REMARKS, tenant.ENABLED
+    ORDER BY tenant.ID DESC
+    LIMIT :limit OFFSET :offset
+  count_usable_personal: |
+    SELECT COUNT(*) AS total
+    FROM AI_TENANT tenant
+    WHERE tenant.REMOVED = 0
+      AND tenant.ORG_ID = :orgId
+      AND tenant.SCOPE_TYPE = 3
+      AND tenant.OWNER_USER_ID = :userId
+      AND (:keyword IS NULL OR tenant.TENANT_NAME LIKE CONCAT('%', :keyword, '%') OR tenant.REMARKS LIKE CONCAT('%', :keyword, '%'))
+  visible_page: |
+    SELECT
+      tenant.ID AS id,
+      tenant.ORG_ID AS orgId,
+      tenant.SCOPE_TYPE AS scopeType,
+      tenant.TENANT_NAME AS tenantName,
+      tenant.REMARKS AS remarks,
+      tenant.ENABLED AS enabled,
+      COUNT(DISTINCT IFNULL(NULLIF(knowledge.FILE_ID, ''), knowledge.ID)) AS knowledgeCount
+    FROM AI_TENANT tenant
+    LEFT JOIN AI_KNOWLEDGE knowledge
+      ON knowledge.TENANT_ID = tenant.ID AND knowledge.REMOVED = 0
+    WHERE tenant.REMOVED = 0
+      AND tenant.ORG_ID = :orgId
+      AND (
+        (tenant.ENABLED = 1 AND (
+          tenant.SCOPE_TYPE = 1
+          OR (tenant.SCOPE_TYPE = 2 AND (
+            FIND_IN_SET(CAST(:userId AS CHAR), tenant.ACCESS_USER_IDS) > 0
+            OR FIND_IN_SET(CAST(:groupId AS CHAR), tenant.ACCESS_GROUP_IDS) > 0
+          ))
+        ))
+        OR (tenant.SCOPE_TYPE = 3 AND tenant.OWNER_USER_ID = :userId)
+      )
+      AND (:scopeType IS NULL OR tenant.SCOPE_TYPE = :scopeType)
+      AND (:keyword IS NULL OR tenant.TENANT_NAME LIKE CONCAT('%', :keyword, '%') OR tenant.REMARKS LIKE CONCAT('%', :keyword, '%'))
+    GROUP BY tenant.ID, tenant.ORG_ID, tenant.SCOPE_TYPE, tenant.TENANT_NAME, tenant.REMARKS, tenant.ENABLED
+    ORDER BY tenant.ID DESC
+    LIMIT :limit OFFSET :offset
+  count_visible: |
+    SELECT COUNT(*) AS total
+    FROM AI_TENANT tenant
+    WHERE tenant.REMOVED = 0
+      AND tenant.ORG_ID = :orgId
+      AND (
+        (tenant.ENABLED = 1 AND (
+          tenant.SCOPE_TYPE = 1
+          OR (tenant.SCOPE_TYPE = 2 AND (
+            FIND_IN_SET(CAST(:userId AS CHAR), tenant.ACCESS_USER_IDS) > 0
+            OR FIND_IN_SET(CAST(:groupId AS CHAR), tenant.ACCESS_GROUP_IDS) > 0
+          ))
+        ))
+        OR (tenant.SCOPE_TYPE = 3 AND tenant.OWNER_USER_ID = :userId)
+      )
+      AND (:scopeType IS NULL OR tenant.SCOPE_TYPE = :scopeType)
+      AND (:keyword IS NULL OR tenant.TENANT_NAME LIKE CONCAT('%', :keyword, '%') OR tenant.REMARKS LIKE CONCAT('%', :keyword, '%'))
+  find_orgs_by_ids: |
+    SELECT ORG_ID AS orgId, COUNT(*) AS tenantCount
+    FROM AI_TENANT
+    WHERE FIND_IN_SET(CAST(ID AS CHAR), :tenantIds) > 0
+      AND ENABLED = 1
+      AND REMOVED = 0
+    GROUP BY ORG_ID
+  insert: |
+    INSERT INTO AI_TENANT (
+      ORG_ID, SCOPE_TYPE, OWNER_USER_ID, ACCESS_USER_IDS, ACCESS_GROUP_IDS,
+      TENANT_NAME, REMARKS, ENABLED, REMOVED, CREATE_USER_ID, CREATE_TIME, UPDATE_TIME
+    ) VALUES (
+      :orgId, :scopeType, :ownerUserId, :accessUserIds, :accessGroupIds,
+      :tenantName, :remarks, 1, 0, :createUserId, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3)
+    )
+  update_company: |
+    UPDATE AI_TENANT
+    SET TENANT_NAME = :tenantName,
+        REMARKS = :remarks,
+        ENABLED = :enabled,
+        SCOPE_TYPE = :scopeType,
+        ACCESS_USER_IDS = :accessUserIds,
+        ACCESS_GROUP_IDS = :accessGroupIds,
+        UPDATE_TIME = CURRENT_TIMESTAMP(3)
+    WHERE ID = :tenantId
+      AND ORG_ID = :orgId
+      AND SCOPE_TYPE IN (1, 2)
+      AND REMOVED = 0
+  update_personal: |
+    UPDATE AI_TENANT
+    SET TENANT_NAME = :tenantName,
+        REMARKS = :remarks,
+        ENABLED = :enabled,
+        UPDATE_TIME = CURRENT_TIMESTAMP(3)
+    WHERE ID = :tenantId
+      AND ORG_ID = :orgId
+      AND SCOPE_TYPE = 3
+      AND OWNER_USER_ID = :ownerUserId
+      AND REMOVED = 0
+  count_knowledge: |
+    SELECT COUNT(*) AS total
+    FROM AI_KNOWLEDGE
+    WHERE TENANT_ID = :tenantId
+      AND REMOVED = 0
+  physical_delete_company: |
+    DELETE FROM AI_TENANT
+    WHERE ID = :tenantId
+      AND ORG_ID = :orgId
+      AND SCOPE_TYPE IN (1, 2)
+      AND REMOVED = 0
+      AND NOT EXISTS (SELECT 1 FROM AI_KNOWLEDGE_FOLDER f WHERE f.TENANT_ID=:tenantId AND f.ORG_ID=:orgId)
+      AND NOT EXISTS (SELECT 1 FROM AI_KNOWLEDGE k WHERE k.TENANT_ID=:tenantId AND k.REMOVED=0)
+      AND NOT EXISTS (SELECT 1 FROM SKILL s WHERE s.ORG_ID=:orgId AND s.REMOVED=0 AND FIND_IN_SET(:tenantId,s.TENANT_IDS)>0)
+  skill_references: |
+    SELECT COUNT(*) AS total FROM SKILL WHERE ORG_ID=:orgId AND REMOVED=0 AND FIND_IN_SET(:tenantId,TENANT_IDS)>0
+  physical_delete_personal: |
+    DELETE FROM AI_TENANT
+    WHERE ID = :tenantId
+      AND ORG_ID = :orgId
+      AND SCOPE_TYPE = 3
+      AND OWNER_USER_ID = :ownerUserId
+      AND REMOVED = 0
+      AND NOT EXISTS (SELECT 1 FROM AI_KNOWLEDGE_FOLDER f WHERE f.TENANT_ID=:tenantId AND f.ORG_ID=:orgId)
+      AND NOT EXISTS (SELECT 1 FROM AI_KNOWLEDGE k WHERE k.TENANT_ID=:tenantId AND k.REMOVED=0)
+
+grant:
+  users_in_company: |
+    SELECT external_user.ID AS id
+    FROM USER_INFO_WB external_user
+    INNER JOIN USER_GROUP user_group
+      ON user_group.ID = external_user.GROUP_ID
+      AND user_group.ORG_ID = :orgId
+      AND user_group.ENABLED = 1
+    WHERE external_user.ENABLED = 1
+      AND FIND_IN_SET(CAST(external_user.ID AS CHAR), :userIds) > 0
+  groups_in_company: |
+    SELECT ID AS id
+    FROM USER_GROUP
+    WHERE ORG_ID = :orgId
+      AND ENABLED = 1
+      AND FIND_IN_SET(CAST(ID AS CHAR), :groupIds) > 0
+  user_options: |
+    SELECT
+      external_user.ID AS id,
+      external_user.REAL_NAME AS realName,
+      external_user.ACCOUNT AS account,
+      user_group.GROUP_NAME AS groupName
+    FROM USER_INFO_WB external_user
+    INNER JOIN USER_GROUP user_group
+      ON user_group.ID = external_user.GROUP_ID
+      AND user_group.ORG_ID = :orgId
+      AND user_group.ENABLED = 1
+    WHERE external_user.ENABLED = 1
+    ORDER BY external_user.ID DESC
+    LIMIT 1000
+  group_options: |
+    SELECT ID AS id, GROUP_NAME AS groupName
+    FROM USER_GROUP
+    WHERE ORG_ID = :orgId AND ENABLED = 1
+    ORDER BY ID DESC
+    LIMIT 1000
+
+graph:
+  read: |
+    SELECT STATUS AS status, FINGERPRINT AS fingerprint, DOCUMENT_JSON AS documentJson,
+      GRAPH_JSON AS graphJson, ERROR_MESSAGE AS errorMessage
+    FROM AI_KNOWLEDGE_GRAPH WHERE ORG_ID=:orgId AND TENANT_ID=:tenantId AND FOLDER_ID=:folderId
+  write_status: |
+    INSERT INTO AI_KNOWLEDGE_GRAPH
+      (ORG_ID, TENANT_ID, FOLDER_ID, STATUS, FINGERPRINT, DOCUMENT_JSON, GRAPH_JSON, ERROR_MESSAGE, CREATE_TIME, UPDATE_TIME)
+    VALUES (:orgId, :tenantId, :folderId, :status, :fingerprint, :documents, NULL, :error, NOW(), NOW())
+    ON DUPLICATE KEY UPDATE STATUS=VALUES(STATUS), FINGERPRINT=VALUES(FINGERPRINT),
+      DOCUMENT_JSON=VALUES(DOCUMENT_JSON), GRAPH_JSON=NULL,
+      ERROR_MESSAGE=VALUES(ERROR_MESSAGE), UPDATE_TIME=NOW()
+  write_ready: |
+    INSERT INTO AI_KNOWLEDGE_GRAPH
+      (ORG_ID, TENANT_ID, FOLDER_ID, STATUS, FINGERPRINT, DOCUMENT_JSON, GRAPH_JSON, ERROR_MESSAGE, CREATE_TIME, UPDATE_TIME)
+    VALUES (:orgId, :tenantId, :folderId, 'ready', :fingerprint, :documents, :graph, NULL, NOW(), NOW())
+    ON DUPLICATE KEY UPDATE STATUS='ready', FINGERPRINT=VALUES(FINGERPRINT),
+      DOCUMENT_JSON=VALUES(DOCUMENT_JSON), GRAPH_JSON=VALUES(GRAPH_JSON),
+      ERROR_MESSAGE=NULL, UPDATE_TIME=NOW()
+
+record:
+  graph_documents_by_tenant: |
+    SELECT
+      knowledge.ID AS id,
+      knowledge.TITLE AS title,
+      knowledge.CONTENT AS content,
+      knowledge.FILE_URL AS fileUrl,
+      knowledge.FILE_ID AS fileId,
+      COALESCE(knowledge.VERSION, 0) AS version
+    FROM AI_KNOWLEDGE knowledge
+    INNER JOIN AI_TENANT tenant ON tenant.ID = knowledge.TENANT_ID AND tenant.ORG_ID = :orgId
+    WHERE knowledge.TENANT_ID = :tenantId
+      AND (:allFolders=1 OR FIND_IN_SET(knowledge.FOLDER_ID,:folderIds)>0 OR
+        FIND_IN_SET(SHA2(CASE WHEN COALESCE(knowledge.FILE_ID,'')<>'' THEN CONCAT('file:',knowledge.FILE_ID) ELSE CONCAT('record:',knowledge.ID) END,256),:documentKeys)>0)
+      AND knowledge.REMOVED = 0
+      AND tenant.REMOVED = 0
+    ORDER BY knowledge.ID ASC
+  file_reference_count: |
+    SELECT COUNT(*) AS total FROM AI_KNOWLEDGE k
+    INNER JOIN AI_TENANT t ON t.ID = k.TENANT_ID
+    WHERE k.FILE_ID = :fileId AND t.ORG_ID = :orgId AND k.REMOVED = 0
+  retrieval_current: |
+    SELECT k.ID AS id, COALESCE(k.VERSION, 0) AS version, k.TENANT_ID AS tenantId,
+      k.FILE_ID AS fileId, k.TITLE AS title, k.FILE_URL AS fileUrl, t.TENANT_NAME AS tenantName
+    FROM AI_KNOWLEDGE k INNER JOIN AI_TENANT t ON t.ID = k.TENANT_ID
+    WHERE t.ORG_ID = :orgId AND t.REMOVED = 0 AND t.ENABLED = 1
+      AND k.REMOVED = 0 AND k.ENABLED = 1
+      AND FIND_IN_SET(k.ID, :recordIds) > 0 AND FIND_IN_SET(t.ID, :tenantIds) > 0
+  list_page_by_tenant: |
+    SELECT
+      knowledge.ID AS id,
+      knowledge.TITLE AS title,
+      knowledge.FILE_URL AS fileUrl,
+      knowledge.FILE_ID AS fileId,
+      COALESCE(knowledge.VERSION, 0) AS version,
+      knowledge.TENANT_ID AS tenantId,
+      knowledge.ENABLED AS enabled,
+      knowledge.CREATE_TIME AS createTime,
+      knowledge.UPDATE_TIME AS updateTime
+    FROM AI_KNOWLEDGE knowledge
+    INNER JOIN AI_TENANT tenant ON tenant.ID = knowledge.TENANT_ID AND tenant.ORG_ID = :orgId
+    WHERE knowledge.TENANT_ID = :tenantId
+      AND knowledge.REMOVED = 0
+      AND (:keyword IS NULL OR knowledge.TITLE LIKE CONCAT('%', :keyword, '%') OR knowledge.CONTENT LIKE CONCAT('%', :keyword, '%') OR knowledge.FILE_URL LIKE CONCAT('%', :keyword, '%') OR knowledge.FILE_ID LIKE CONCAT('%', :keyword, '%'))
+    ORDER BY knowledge.ID DESC
+    LIMIT :limit OFFSET :offset
+  list_status_index_by_tenant: |
+    SELECT
+      knowledge.ID AS id,
+      knowledge.TITLE AS title,
+      knowledge.FILE_URL AS fileUrl,
+      knowledge.FILE_ID AS fileId,
+      COALESCE(knowledge.VERSION, 0) AS version,
+      knowledge.TENANT_ID AS tenantId,
+      knowledge.ENABLED AS enabled,
+      knowledge.CREATE_TIME AS createTime,
+      knowledge.UPDATE_TIME AS updateTime
+    FROM AI_KNOWLEDGE knowledge
+    INNER JOIN AI_TENANT tenant ON tenant.ID = knowledge.TENANT_ID AND tenant.ORG_ID = :orgId
+    WHERE knowledge.TENANT_ID = :tenantId
+      AND (:folderId IS NULL OR knowledge.FOLDER_ID=:folderId)
+      AND knowledge.REMOVED = 0
+      AND (:keyword IS NULL OR knowledge.TITLE LIKE CONCAT('%', :keyword, '%') OR knowledge.CONTENT LIKE CONCAT('%', :keyword, '%') OR knowledge.FILE_URL LIKE CONCAT('%', :keyword, '%') OR knowledge.FILE_ID LIKE CONCAT('%', :keyword, '%'))
+    ORDER BY knowledge.ID DESC
+  count_page_by_tenant: |
+    SELECT COUNT(*) AS total
+    FROM AI_KNOWLEDGE knowledge
+    INNER JOIN AI_TENANT tenant ON tenant.ID = knowledge.TENANT_ID AND tenant.ORG_ID = :orgId
+    WHERE knowledge.TENANT_ID = :tenantId
+      AND knowledge.REMOVED = 0
+      AND (:keyword IS NULL OR knowledge.TITLE LIKE CONCAT('%', :keyword, '%') OR knowledge.CONTENT LIKE CONCAT('%', :keyword, '%') OR knowledge.FILE_URL LIKE CONCAT('%', :keyword, '%') OR knowledge.FILE_ID LIKE CONCAT('%', :keyword, '%'))
+  list_documents_by_tenant: |
+    SELECT
+      MIN(knowledge.ID) AS id,
+      MAX(knowledge.TITLE) AS title,
+      MAX(knowledge.FILE_URL) AS fileUrl,
+      MAX(knowledge.FILE_ID) AS fileId,
+      MAX(COALESCE(knowledge.VERSION, 0)) AS version,
+      knowledge.TENANT_ID AS tenantId,
+      MAX(knowledge.FOLDER_ID) AS folderId,
+      MIN(knowledge.ENABLED) AS enabled,
+      MIN(knowledge.CREATE_TIME) AS createTime,
+      MAX(knowledge.UPDATE_TIME) AS updateTime
+    FROM AI_KNOWLEDGE knowledge
+    INNER JOIN AI_TENANT tenant ON tenant.ID = knowledge.TENANT_ID AND tenant.ORG_ID = :orgId
+    WHERE knowledge.TENANT_ID = :tenantId
+      AND (:folderId IS NULL OR knowledge.FOLDER_ID=:folderId)
+      AND knowledge.REMOVED = 0
+      AND (:keyword IS NULL OR knowledge.TITLE LIKE CONCAT('%', :keyword, '%') OR knowledge.CONTENT LIKE CONCAT('%', :keyword, '%') OR knowledge.FILE_URL LIKE CONCAT('%', :keyword, '%') OR knowledge.FILE_ID LIKE CONCAT('%', :keyword, '%'))
+    GROUP BY IFNULL(NULLIF(knowledge.FILE_ID, ''), knowledge.ID), knowledge.TENANT_ID
+    ORDER BY MAX(knowledge.ID) DESC
+    LIMIT :limit OFFSET :offset
+  count_documents_by_tenant: |
+    SELECT COUNT(*) AS total FROM (
+      SELECT IFNULL(NULLIF(knowledge.FILE_ID, ''), knowledge.ID) AS documentKey
+      FROM AI_KNOWLEDGE knowledge
+      INNER JOIN AI_TENANT tenant ON tenant.ID = knowledge.TENANT_ID AND tenant.ORG_ID = :orgId
+      WHERE knowledge.TENANT_ID = :tenantId
+        AND (:folderId IS NULL OR knowledge.FOLDER_ID=:folderId)
+        AND knowledge.REMOVED = 0
+        AND (:keyword IS NULL OR knowledge.TITLE LIKE CONCAT('%', :keyword, '%') OR knowledge.CONTENT LIKE CONCAT('%', :keyword, '%') OR knowledge.FILE_URL LIKE CONCAT('%', :keyword, '%') OR knowledge.FILE_ID LIKE CONCAT('%', :keyword, '%'))
+      GROUP BY IFNULL(NULLIF(knowledge.FILE_ID, ''), knowledge.ID)
+    ) documents
+  list_by_file_ids: |
+    SELECT
+      knowledge.ID AS id,
+      knowledge.TITLE AS title,
+      knowledge.FILE_URL AS fileUrl,
+      knowledge.FILE_ID AS fileId,
+      COALESCE(knowledge.VERSION, 0) AS version,
+      knowledge.TENANT_ID AS tenantId,
+      knowledge.ENABLED AS enabled,
+      knowledge.CREATE_TIME AS createTime,
+      knowledge.UPDATE_TIME AS updateTime
+    FROM AI_KNOWLEDGE knowledge
+    INNER JOIN AI_TENANT tenant ON tenant.ID = knowledge.TENANT_ID AND tenant.ORG_ID = :orgId
+    WHERE knowledge.TENANT_ID = :tenantId
+      AND knowledge.REMOVED = 0
+      AND FIND_IN_SET(knowledge.FILE_ID, :fileIds) > 0
+    ORDER BY knowledge.ID DESC
+  ids_by_file: |
+    SELECT knowledge.ID AS id
+    FROM AI_KNOWLEDGE knowledge
+    INNER JOIN AI_TENANT tenant ON tenant.ID = knowledge.TENANT_ID AND tenant.ORG_ID = :orgId
+    WHERE knowledge.TENANT_ID = :tenantId
+      AND knowledge.FILE_ID = :fileId
+      AND knowledge.REMOVED = 0
+  contents_by_file: |
+    SELECT knowledge.ID AS id, knowledge.CONTENT AS content
+    FROM AI_KNOWLEDGE knowledge
+    INNER JOIN AI_TENANT tenant ON tenant.ID = knowledge.TENANT_ID AND tenant.ORG_ID = :orgId
+    WHERE knowledge.TENANT_ID = :tenantId
+      AND knowledge.FILE_ID = :fileId
+      AND knowledge.REMOVED = 0
+    ORDER BY knowledge.ID ASC
+  find_by_id: |
+    SELECT
+      knowledge.ID AS id,
+      knowledge.TITLE AS title,
+      knowledge.CONTENT AS content,
+      knowledge.FILE_URL AS fileUrl,
+      knowledge.FILE_ID AS fileId,
+      COALESCE(knowledge.VERSION, 0) AS version,
+      knowledge.TENANT_ID AS tenantId,
+      knowledge.FOLDER_ID AS folderId,
+      (SELECT f.ID FROM AI_KNOWLEDGE_FOLDER f WHERE f.ORG_ID=tenant.ORG_ID AND f.TENANT_ID=knowledge.TENANT_ID
+        AND f.DOCUMENT_KEY=SHA2(CASE WHEN COALESCE(knowledge.FILE_ID,'')<>'' THEN CONCAT('file:',knowledge.FILE_ID)
+          ELSE CONCAT('record:',knowledge.ID) END,256)) AS documentNodeId,
+      knowledge.ENABLED AS enabled,
+      knowledge.CREATE_TIME AS createTime,
+      knowledge.UPDATE_TIME AS updateTime
+    FROM AI_KNOWLEDGE knowledge
+    INNER JOIN AI_TENANT tenant ON tenant.ID = knowledge.TENANT_ID AND tenant.ORG_ID = :orgId
+    WHERE knowledge.ID = :recordId
+      AND knowledge.REMOVED = 0
+    LIMIT 1
+  bump_tenant_versions: |
+    UPDATE AI_KNOWLEDGE
+    SET TENANT = :tenantName,
+        VERSION = COALESCE(VERSION, 0) + 1,
+        UPDATE_USER_ID = :updateUserId,
+        UPDATE_USER_NAME = :updateUserName,
+        UPDATE_TIME = :updateTime
+    WHERE TENANT_ID = :tenantId
+      AND REMOVED = 0
+  ids_by_tenant: |
+    SELECT ID AS id
+    FROM AI_KNOWLEDGE
+    WHERE TENANT_ID = :tenantId
+      AND REMOVED = 0
+    ORDER BY ID ASC
+  active_sync_by_tenant: |
+    SELECT
+      knowledge.ID AS id,
+      knowledge.TITLE AS title,
+      knowledge.CONTENT AS content,
+      knowledge.FILE_URL AS fileUrl,
+      knowledge.FILE_ID AS fileId,
+      COALESCE(knowledge.VERSION, 0) AS version,
+      knowledge.TENANT_ID AS tenantId,
+      tenant.TENANT_NAME AS tenantName
+    FROM AI_KNOWLEDGE knowledge
+    INNER JOIN AI_TENANT tenant ON tenant.ID = knowledge.TENANT_ID
+    WHERE knowledge.TENANT_ID = :tenantId
+      AND tenant.ORG_ID = :orgId
+      AND knowledge.ENABLED = 1
+      AND knowledge.REMOVED = 0
+      AND tenant.ENABLED = 1
+      AND tenant.REMOVED = 0
+    ORDER BY knowledge.ID ASC
+  find_sync_by_id: |
+    SELECT
+      knowledge.ID AS id,
+      knowledge.TITLE AS title,
+      knowledge.CONTENT AS content,
+      knowledge.FILE_URL AS fileUrl,
+      knowledge.FILE_ID AS fileId,
+      COALESCE(knowledge.VERSION, 0) AS version,
+      knowledge.TENANT_ID AS tenantId,
+      tenant.TENANT_NAME AS tenantName,
+      knowledge.ENABLED AS enabled
+    FROM AI_KNOWLEDGE knowledge
+    INNER JOIN AI_TENANT tenant ON tenant.ID = knowledge.TENANT_ID
+    WHERE knowledge.ID = :recordId
+      AND tenant.ORG_ID = :orgId
+      AND knowledge.REMOVED = 0
+      AND tenant.REMOVED = 0
+    LIMIT 1
+  insert: |
+    INSERT INTO AI_KNOWLEDGE (
+      TITLE, CONTENT, FILE_URL, FILE_ID, VERSION, TYPE, TENANT, TENANT_ID, FOLDER_ID,
+      ENABLED, REMOVED, CREATE_USER_ID, CREATE_USER_NAME, CREATE_TIME
+    ) VALUES (
+      :title, :content, :fileUrl, :fileId, 1, 1, :tenantName, :tenantId, :folderId,
+      1, 0, :createUserId, :createUserName, :createTime
+    )
+  update: |
+    UPDATE AI_KNOWLEDGE
+    SET TITLE = :title,
+        CONTENT = :content,
+        FILE_URL = :fileUrl,
+        FOLDER_ID = CASE WHEN TENANT_ID=:tenantId THEN FOLDER_ID ELSE 0 END,
+        TENANT_ID = :tenantId,
+        TENANT = :tenantName,
+        ENABLED = :enabled,
+        VERSION = COALESCE(VERSION, 0) + 1,
+        UPDATE_USER_ID = :updateUserId,
+        UPDATE_USER_NAME = :updateUserName,
+        UPDATE_TIME = :updateTime
+    WHERE ID = :recordId
+      AND EXISTS (SELECT 1 FROM AI_TENANT WHERE AI_TENANT.ID = AI_KNOWLEDGE.TENANT_ID AND AI_TENANT.ORG_ID = :orgId)
+      AND COALESCE(VERSION, 0) = :expectedVersion
+      AND REMOVED = 0
+  physical_delete: |
+    DELETE FROM AI_KNOWLEDGE
+    WHERE ID = :recordId
+      AND TENANT_ID = :tenantId
+      AND EXISTS (SELECT 1 FROM AI_TENANT WHERE AI_TENANT.ID = AI_KNOWLEDGE.TENANT_ID AND AI_TENANT.ORG_ID = :orgId)
+      AND REMOVED = 0
+  physical_delete_by_file: |
+    DELETE FROM AI_KNOWLEDGE
+    WHERE FILE_ID = :fileId
+      AND FILE_ID <> ''
+      AND TENANT_ID = :tenantId
+      AND EXISTS (SELECT 1 FROM AI_TENANT WHERE AI_TENANT.ID = AI_KNOWLEDGE.TENANT_ID AND AI_TENANT.ORG_ID = :orgId)
+      AND REMOVED = 0

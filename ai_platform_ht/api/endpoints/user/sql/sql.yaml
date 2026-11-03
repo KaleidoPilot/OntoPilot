@@ -1,0 +1,485 @@
+schema:
+  add_admin_level: |
+    ALTER TABLE USER_INFO ADD COLUMN DEPT_LEVEL TINYINT NOT NULL DEFAULT 0 COMMENT '管理员等级：0最高权限，1企业管理员' AFTER DEPT_NAME
+
+  require_admin_level: |
+    ALTER TABLE USER_INFO MODIFY COLUMN DEPT_LEVEL TINYINT NOT NULL COMMENT '管理员等级：0最高权限，1企业管理员'
+
+  add_admin_organization: |
+    ALTER TABLE USER_INFO ADD COLUMN ORG_ID BIGINT NULL COMMENT '所属公司ORGANIZATION.ID；企业管理员必须绑定公司' AFTER DEPT_LEVEL
+
+  create_user_group: |
+    CREATE TABLE IF NOT EXISTS USER_GROUP (
+      ID BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+      ORG_ID BIGINT NOT NULL COMMENT '所属公司ORGANIZATION.ID',
+      GROUP_NAME VARCHAR(100) NOT NULL COMMENT '用户组名称',
+      AGENT_ID VARCHAR(1000) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '关联AI_AGENT.ID，英文逗号分隔',
+      REMARKS VARCHAR(500) NULL COMMENT '备注',
+      ENABLED TINYINT NOT NULL DEFAULT 1 COMMENT '是否启用：1启用，0停用',
+      CREATE_USER_ID BIGINT NULL COMMENT '创建人ID',
+      CREATE_USER_NAME VARCHAR(55) NULL COMMENT '创建人姓名',
+      CREATE_TIME VARCHAR(55) NULL COMMENT '创建时间',
+      UPDATE_USER_ID BIGINT NULL COMMENT '更新人ID',
+      UPDATE_USER_NAME VARCHAR(55) NULL COMMENT '更新人姓名',
+      UPDATE_TIME VARCHAR(55) NULL COMMENT '更新时间',
+      PRIMARY KEY (ID),
+      UNIQUE KEY UK_USER_GROUP_ORG_NAME (ORG_ID, GROUP_NAME),
+      KEY IDX_USER_GROUP_ORG (ORG_ID, ENABLED),
+      KEY IDX_USER_GROUP_AGENT_ID (AGENT_ID)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='外部用户组'
+
+  multiple_agents_upgrade: |
+    ALTER TABLE USER_GROUP MODIFY COLUMN AGENT_ID VARCHAR(1000) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '关联AI_AGENT.ID，英文逗号分隔'
+
+  create_external_user: |
+    CREATE TABLE IF NOT EXISTS USER_INFO_WB (
+      ID BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+      GROUP_ID BIGINT NOT NULL COMMENT '关联USER_GROUP.ID',
+      REAL_NAME VARCHAR(55) NOT NULL COMMENT '用户姓名',
+      ACCOUNT VARCHAR(55) NOT NULL COMMENT '登录账号',
+      PASSWORD VARCHAR(128) NOT NULL COMMENT 'bcrypt密码哈希',
+      PHONE VARCHAR(32) NULL COMMENT '手机号',
+      REMARKS VARCHAR(500) NULL COMMENT '备注',
+      ENABLED TINYINT NOT NULL DEFAULT 1 COMMENT '是否启用：1启用，0停用',
+      CREATE_USER_ID BIGINT NULL COMMENT '创建人ID',
+      CREATE_USER_NAME VARCHAR(55) NULL COMMENT '创建人姓名',
+      CREATE_TIME VARCHAR(55) NULL COMMENT '创建时间',
+      UPDATE_USER_ID BIGINT NULL COMMENT '更新人ID',
+      UPDATE_USER_NAME VARCHAR(55) NULL COMMENT '更新人姓名',
+      UPDATE_TIME VARCHAR(55) NULL COMMENT '更新时间',
+      PRIMARY KEY (ID),
+      UNIQUE KEY UK_USER_INFO_WB_ACCOUNT (ACCOUNT),
+      KEY IDX_USER_INFO_WB_GROUP_ID (GROUP_ID),
+      KEY IDX_USER_INFO_WB_GROUP_ENABLED (GROUP_ID, ENABLED)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='外部用户信息'
+
+internal_user:
+  company_count: |
+    SELECT COUNT(*) AS total FROM USER_INFO
+    WHERE ORG_ID = :orgId AND DEPT_LEVEL = 1 AND REMOVED = 0
+      AND (:keyword = '' OR REAL_NAME LIKE CONCAT('%', :keyword, '%') OR ACCOUNT LIKE CONCAT('%', :keyword, '%'))
+      AND (:enabled IS NULL OR ENABLED = :enabled)
+
+  company_list: |
+    SELECT ID AS id, REAL_NAME AS realName, ACCOUNT AS account, PHONE AS phone,
+           DEPT_NAME AS deptName, DEPT_LEVEL AS deptLevel, ORG_ID AS orgId,
+           REMARKS AS remarks, ENABLED AS enabled, CREATE_TIME AS createTime
+    FROM USER_INFO
+    WHERE ORG_ID = :orgId AND DEPT_LEVEL = 1 AND REMOVED = 0
+      AND (:keyword = '' OR REAL_NAME LIKE CONCAT('%', :keyword, '%') OR ACCOUNT LIKE CONCAT('%', :keyword, '%'))
+      AND (:enabled IS NULL OR ENABLED = :enabled)
+    ORDER BY ID DESC LIMIT :limit OFFSET :offset
+
+  find_company_administrator: |
+    SELECT ID AS id FROM USER_INFO
+    WHERE ID = :id AND ORG_ID = :orgId AND DEPT_LEVEL = 1 AND REMOVED = 0
+
+  company_update: |
+    UPDATE USER_INFO SET REAL_NAME = :realName, ACCOUNT = :account, PHONE = :phone,
+      DEPT_NAME = :deptName, REMARKS = :remarks, ENABLED = :enabled,
+      PASSWORD = COALESCE(:password, PASSWORD), UPDATE_USER_ID = :updateUserId,
+      UPDATE_USER_NAME = :updateUserName, UPDATE_TIME = :updateTime
+    WHERE ID = :id AND ORG_ID = :orgId AND DEPT_LEVEL = 1 AND REMOVED = 0
+      AND EXISTS (SELECT 1 FROM ORGANIZATION WHERE ID = :orgId AND REMOVED = 0 AND (:enabled = 0 OR ENABLED = 1))
+
+  find_by_account: |
+    SELECT ID AS id, DEPT_LEVEL AS deptLevel, ORG_ID AS orgId
+    FROM USER_INFO WHERE ACCOUNT = :account LIMIT 1
+
+  insert_company_administrator: |
+    INSERT INTO USER_INFO (
+      REAL_NAME, ACCOUNT, PASSWORD, PHONE, DEPT_NAME, DEPT_LEVEL, ORG_ID, REMARKS,
+      ENABLED, REMOVED, CREATE_USER_ID, CREATE_USER_NAME, CREATE_TIME
+    )
+    SELECT :realName, :account, :password, :phone, :deptName, 1, organization.ID, :remarks,
+           :enabled, 0, :createUserId, :createUserName, :createTime
+    FROM ORGANIZATION AS organization
+    WHERE organization.ID = :orgId AND organization.ENABLED = 1 AND organization.REMOVED = 0
+
+  count: |
+    SELECT COUNT(*) AS total FROM USER_INFO
+    WHERE REMOVED = 0 AND ENABLED = 1
+      AND (:realName IS NULL OR REAL_NAME LIKE CONCAT('%', :realName, '%'))
+      AND (:account IS NULL OR ACCOUNT LIKE CONCAT('%', :account, '%'))
+      AND (:phone IS NULL OR PHONE LIKE CONCAT('%', :phone, '%'))
+      AND (:deptName IS NULL OR DEPT_NAME LIKE CONCAT('%', :deptName, '%'))
+      AND (:deptLevel IS NULL OR DEPT_LEVEL = :deptLevel)
+      AND (:orgId IS NULL OR ORG_ID = :orgId)
+      AND (:remarks IS NULL OR REMARKS LIKE CONCAT('%', :remarks, '%'))
+      AND (:enabled IS NULL OR ENABLED = :enabled)
+      AND (:removed IS NULL OR REMOVED = :removed)
+      AND (:createUserId IS NULL OR CREATE_USER_ID = :createUserId)
+      AND (:createUserName IS NULL OR CREATE_USER_NAME LIKE CONCAT('%', :createUserName, '%'))
+      AND (:createTime IS NULL OR CREATE_TIME LIKE CONCAT('%', :createTime, '%'))
+      AND (:updateUserId IS NULL OR UPDATE_USER_ID = :updateUserId)
+      AND (:updateUserName IS NULL OR UPDATE_USER_NAME LIKE CONCAT('%', :updateUserName, '%'))
+      AND (:updateTime IS NULL OR UPDATE_TIME LIKE CONCAT('%', :updateTime, '%'))
+
+  list: |
+    SELECT ID AS id, REAL_NAME AS realName, ACCOUNT AS account, PHONE AS phone,
+           DEPT_NAME AS deptName, DEPT_LEVEL AS deptLevel, ORG_ID AS orgId,
+           REMARKS AS remarks, ENABLED AS enabled, REMOVED AS removed,
+           CREATE_USER_ID AS createUserId, CREATE_USER_NAME AS createUserName, CREATE_TIME AS createTime,
+           UPDATE_USER_ID AS updateUserId, UPDATE_USER_NAME AS updateUserName, UPDATE_TIME AS updateTime
+    FROM USER_INFO
+    WHERE REMOVED = 0 AND ENABLED = 1
+      AND (:realName IS NULL OR REAL_NAME LIKE CONCAT('%', :realName, '%'))
+      AND (:account IS NULL OR ACCOUNT LIKE CONCAT('%', :account, '%'))
+      AND (:phone IS NULL OR PHONE LIKE CONCAT('%', :phone, '%'))
+      AND (:deptName IS NULL OR DEPT_NAME LIKE CONCAT('%', :deptName, '%'))
+      AND (:deptLevel IS NULL OR DEPT_LEVEL = :deptLevel)
+      AND (:orgId IS NULL OR ORG_ID = :orgId)
+      AND (:remarks IS NULL OR REMARKS LIKE CONCAT('%', :remarks, '%'))
+      AND (:enabled IS NULL OR ENABLED = :enabled)
+      AND (:removed IS NULL OR REMOVED = :removed)
+      AND (:createUserId IS NULL OR CREATE_USER_ID = :createUserId)
+      AND (:createUserName IS NULL OR CREATE_USER_NAME LIKE CONCAT('%', :createUserName, '%'))
+      AND (:createTime IS NULL OR CREATE_TIME LIKE CONCAT('%', :createTime, '%'))
+      AND (:updateUserId IS NULL OR UPDATE_USER_ID = :updateUserId)
+      AND (:updateUserName IS NULL OR UPDATE_USER_NAME LIKE CONCAT('%', :updateUserName, '%'))
+      AND (:updateTime IS NULL OR UPDATE_TIME LIKE CONCAT('%', :updateTime, '%'))
+    ORDER BY CREATE_TIME DESC, ID DESC LIMIT :limit OFFSET :offset
+
+  find_by_id: |
+    SELECT ID AS id, REAL_NAME AS realName, DEPT_LEVEL AS deptLevel, ORG_ID AS orgId
+    FROM USER_INFO WHERE ID = :id AND REMOVED = 0
+
+  update: |
+    UPDATE USER_INFO SET REAL_NAME = COALESCE(:realName, REAL_NAME),
+      ACCOUNT = COALESCE(:account, ACCOUNT), PASSWORD = COALESCE(:password, PASSWORD),
+      PHONE = COALESCE(:phone, PHONE), DEPT_NAME = COALESCE(:deptName, DEPT_NAME),
+      DEPT_LEVEL = COALESCE(:deptLevel, DEPT_LEVEL),
+      ORG_ID = CASE WHEN :setOrgId = 1 THEN :orgId ELSE ORG_ID END,
+      REMARKS = COALESCE(:remarks, REMARKS), ENABLED = COALESCE(:enabled, ENABLED),
+      REMOVED = COALESCE(:removed, REMOVED),
+      UPDATE_USER_ID = :updateUserId, UPDATE_USER_NAME = :updateUserName, UPDATE_TIME = :updateTime
+    WHERE ID = :id AND REMOVED = 0
+
+  physical_delete: |
+    DELETE FROM USER_INFO WHERE ID = :id
+
+  logical_delete: |
+    UPDATE USER_INFO SET REMOVED = 1, ENABLED = 0,
+      UPDATE_USER_ID = :updateUserId, UPDATE_USER_NAME = :updateUserName, UPDATE_TIME = :updateTime
+    WHERE ID = :id AND REMOVED = 0
+
+identity:
+  internal_by_id: |
+    SELECT ID AS id, REAL_NAME AS realName, ACCOUNT AS account,
+           DEPT_LEVEL AS deptLevel, ORG_ID AS orgId
+    FROM USER_INFO
+    WHERE ID = :id AND ENABLED = 1 AND REMOVED = 0
+    LIMIT 1
+
+  external_by_id: |
+    SELECT
+      external_user.ID AS id,
+      external_user.REAL_NAME AS realName,
+      external_user.ACCOUNT AS account,
+      external_user.GROUP_ID AS groupId,
+      user_group.GROUP_NAME AS groupName,
+      user_group.ORG_ID AS orgId,
+      organization.ORG_CODE AS orgCode,
+      organization.NAME AS orgName,
+      agent.ID AS agentId,
+      agent.KEY AS agentKey
+    FROM USER_INFO_WB AS external_user
+    INNER JOIN USER_GROUP AS user_group
+      ON user_group.ID = external_user.GROUP_ID AND user_group.ENABLED = 1
+    INNER JOIN ORGANIZATION AS organization
+      ON organization.ID = user_group.ORG_ID AND organization.ENABLED = 1 AND organization.REMOVED = 0
+    LEFT JOIN AI_AGENT AS agent
+      ON FIND_IN_SET(CAST(agent.ID AS CHAR), user_group.AGENT_ID) > 0 AND agent.ORG_ID = user_group.ORG_ID AND agent.ENABLED = 1 AND agent.REMOVED = 0 AND agent.AGENT_TYPE = 1
+    WHERE external_user.ID = :id AND external_user.ENABLED = 1
+    ORDER BY FIND_IN_SET(CAST(agent.ID AS CHAR), user_group.AGENT_ID)
+    LIMIT 1
+
+login:
+  internal_by_account: |
+    SELECT ID AS id, REAL_NAME AS realName, ACCOUNT AS account, PASSWORD AS password,
+           DEPT_LEVEL AS deptLevel, ORG_ID AS orgId
+    FROM USER_INFO
+    WHERE ACCOUNT = :account AND ENABLED = 1 AND REMOVED = 0
+    LIMIT 1
+
+  external_by_account: |
+    SELECT
+      external_user.ID AS id,
+      external_user.REAL_NAME AS realName,
+      external_user.ACCOUNT AS account,
+      external_user.PASSWORD AS password,
+      external_user.GROUP_ID AS groupId,
+      user_group.GROUP_NAME AS groupName,
+      user_group.ORG_ID AS orgId,
+      organization.ORG_CODE AS orgCode,
+      organization.NAME AS orgName,
+      agent.ID AS agentId,
+      agent.KEY AS agentKey
+    FROM USER_INFO_WB AS external_user
+    INNER JOIN USER_GROUP AS user_group
+      ON user_group.ID = external_user.GROUP_ID AND user_group.ENABLED = 1
+    INNER JOIN ORGANIZATION AS organization
+      ON organization.ID = user_group.ORG_ID AND organization.ENABLED = 1 AND organization.REMOVED = 0
+    LEFT JOIN AI_AGENT AS agent
+      ON FIND_IN_SET(CAST(agent.ID AS CHAR), user_group.AGENT_ID) > 0 AND agent.ORG_ID = user_group.ORG_ID AND agent.ENABLED = 1 AND agent.REMOVED = 0 AND agent.AGENT_TYPE = 1
+    WHERE external_user.ACCOUNT = :account AND external_user.ENABLED = 1
+    ORDER BY FIND_IN_SET(CAST(agent.ID AS CHAR), user_group.AGENT_ID)
+    LIMIT 1
+
+user_group:
+  count: |
+    SELECT COUNT(*) AS total
+    FROM USER_GROUP AS user_group
+    WHERE user_group.ORG_ID = :orgId
+      AND (
+      :keyword IS NULL
+      OR user_group.GROUP_NAME LIKE CONCAT('%', :keyword, '%')
+      OR EXISTS (SELECT 1 FROM AI_AGENT agent WHERE agent.ORG_ID = user_group.ORG_ID
+        AND FIND_IN_SET(CAST(agent.ID AS CHAR), user_group.AGENT_ID) > 0
+        AND agent.AGENT_NAME LIKE CONCAT('%', :keyword, '%'))
+    )
+      AND (:enabled IS NULL OR user_group.ENABLED = :enabled)
+
+  list: |
+    SELECT
+      user_group.ID AS id,
+      user_group.GROUP_NAME AS groupName,
+      user_group.AGENT_ID AS agentId,
+      (SELECT GROUP_CONCAT(agent.AGENT_NAME ORDER BY FIND_IN_SET(CAST(agent.ID AS CHAR), user_group.AGENT_ID) SEPARATOR '、')
+        FROM AI_AGENT agent WHERE agent.ORG_ID = user_group.ORG_ID
+        AND FIND_IN_SET(CAST(agent.ID AS CHAR), user_group.AGENT_ID) > 0) AS agentName,
+      (SELECT GROUP_CONCAT(agent.`KEY` ORDER BY FIND_IN_SET(CAST(agent.ID AS CHAR), user_group.AGENT_ID) SEPARATOR ',')
+        FROM AI_AGENT agent WHERE agent.ORG_ID = user_group.ORG_ID
+        AND FIND_IN_SET(CAST(agent.ID AS CHAR), user_group.AGENT_ID) > 0) AS agentKey,
+      user_group.REMARKS AS remarks,
+      user_group.ENABLED AS enabled,
+      user_group.CREATE_TIME AS createTime,
+      user_group.UPDATE_TIME AS updateTime,
+      (SELECT COUNT(*) FROM USER_INFO_WB external_user WHERE external_user.GROUP_ID = user_group.ID) AS userCount
+    FROM USER_GROUP AS user_group
+    WHERE user_group.ORG_ID = :orgId
+      AND (
+      :keyword IS NULL
+      OR user_group.GROUP_NAME LIKE CONCAT('%', :keyword, '%')
+      OR EXISTS (SELECT 1 FROM AI_AGENT agent WHERE agent.ORG_ID = user_group.ORG_ID
+        AND FIND_IN_SET(CAST(agent.ID AS CHAR), user_group.AGENT_ID) > 0
+        AND agent.AGENT_NAME LIKE CONCAT('%', :keyword, '%'))
+    )
+      AND (:enabled IS NULL OR user_group.ENABLED = :enabled)
+    ORDER BY COALESCE(user_group.UPDATE_TIME, user_group.CREATE_TIME) DESC, user_group.ID DESC
+    LIMIT :limit OFFSET :offset
+
+  options: |
+    SELECT ID AS id, GROUP_NAME AS groupName, AGENT_ID AS agentId, ENABLED AS enabled
+    FROM USER_GROUP
+    WHERE ORG_ID = :orgId AND (:includeDisabled = 1 OR ENABLED = 1)
+    ORDER BY GROUP_NAME ASC, ID ASC
+
+  agent_options: |
+    SELECT ID AS id, AGENT_NAME AS agentName, `KEY` AS agentKey
+    FROM AI_AGENT
+    WHERE ORG_ID = :orgId AND ENABLED = 1 AND REMOVED = 0 AND AGENT_TYPE = 1
+    ORDER BY AGENT_NAME ASC, ID ASC
+
+  find_agent: |
+    SELECT ID AS id
+    FROM AI_AGENT
+    WHERE ID = :agentId AND ORG_ID = :orgId AND ENABLED = 1 AND REMOVED = 0 AND AGENT_TYPE = 1
+    LIMIT 1
+
+  find_agents: |
+    SELECT ID AS id FROM AI_AGENT
+    WHERE FIND_IN_SET(CAST(ID AS CHAR), :agentIds) > 0
+      AND ORG_ID = :orgId AND ENABLED = 1 AND REMOVED = 0 AND AGENT_TYPE = 1
+
+  external_agents: |
+    SELECT agent.ID AS id, agent.AGENT_NAME AS agentName, agent.`KEY` AS agentKey,
+      agent.AGENT_TYPE AS agentType, agent.USER_ID AS userId,
+      agent.MCP_IDS AS mcpIds, agent.TENANT_IDS AS tenantIds
+    FROM USER_INFO_WB external_user
+    INNER JOIN USER_GROUP user_group ON user_group.ID = external_user.GROUP_ID AND user_group.ENABLED = 1
+    INNER JOIN ORGANIZATION organization ON organization.ID = user_group.ORG_ID AND organization.ENABLED = 1 AND organization.REMOVED = 0
+    INNER JOIN AI_AGENT agent ON agent.ORG_ID = user_group.ORG_ID
+      AND agent.ENABLED = 1 AND agent.REMOVED = 0
+      AND (
+        (agent.AGENT_TYPE = 1 AND FIND_IN_SET(CAST(agent.ID AS CHAR), user_group.AGENT_ID) > 0)
+        OR (agent.AGENT_TYPE = 2 AND agent.USER_ID = external_user.ID)
+        OR (agent.AGENT_TYPE = 2 AND FIND_IN_SET(CAST(external_user.ID AS CHAR), agent.SHARE_USER_IDS) > 0
+          AND EXISTS (SELECT 1 FROM AGENT_SHARE sharing_record WHERE sharing_record.AGENT_ID = agent.ID AND sharing_record.ORG_ID = agent.ORG_ID
+            AND sharing_record.SHARE_USER_ID = agent.USER_ID AND sharing_record.RECEIVE_USER_ID = external_user.ID AND sharing_record.ENABLED = 1)
+          AND EXISTS (SELECT 1 FROM USER_INFO_WB owner JOIN USER_GROUP owner_group ON owner_group.ID = owner.GROUP_ID
+            WHERE owner.ID = agent.USER_ID AND owner.ENABLED = 1 AND owner_group.ENABLED = 1 AND owner_group.ORG_ID = agent.ORG_ID))
+      )
+    WHERE external_user.ID = :id AND external_user.ENABLED = 1
+    ORDER BY FIND_IN_SET(CAST(agent.ID AS CHAR), user_group.AGENT_ID)
+
+  find_by_id: |
+    SELECT ID AS id, ORG_ID AS orgId, GROUP_NAME AS groupName, AGENT_ID AS agentId, ENABLED AS enabled
+    FROM USER_GROUP
+    WHERE ID = :id AND ORG_ID = :orgId
+    LIMIT 1
+
+  find_duplicate_name: |
+    SELECT ID AS id
+    FROM USER_GROUP
+    WHERE ORG_ID = :orgId AND GROUP_NAME = :groupName AND ID <> :excludeId
+    LIMIT 1
+
+  insert: |
+    INSERT INTO USER_GROUP (
+      ORG_ID, GROUP_NAME, AGENT_ID, REMARKS, ENABLED,
+      CREATE_USER_ID, CREATE_USER_NAME, CREATE_TIME
+    ) VALUES (
+      :orgId, :groupName, :agentId, :remarks, :enabled,
+      :createUserId, :createUserName, :createTime
+    )
+
+  update: |
+    UPDATE USER_GROUP
+    SET GROUP_NAME = :groupName,
+        AGENT_ID = :agentId,
+        REMARKS = :remarks,
+        ENABLED = :enabled,
+        UPDATE_USER_ID = :updateUserId,
+        UPDATE_USER_NAME = :updateUserName,
+        UPDATE_TIME = :updateTime
+    WHERE ID = :id AND ORG_ID = :orgId
+
+  count_users: |
+    SELECT COUNT(*) AS total
+    FROM USER_INFO_WB
+    WHERE GROUP_ID = :id
+      AND EXISTS (SELECT 1 FROM USER_GROUP WHERE ID = :id AND ORG_ID = :orgId)
+
+  skill_group_references: |
+    SELECT COUNT(*) AS total FROM SKILL_GROUP_USER_GROUP WHERE ORG_ID=:orgId AND USER_GROUP_ID=:id
+
+  physical_delete: |
+    DELETE FROM USER_GROUP
+    WHERE ID = :id AND ORG_ID = :orgId
+      AND NOT EXISTS (SELECT 1 FROM SKILL_GROUP_USER_GROUP b WHERE b.ORG_ID=:orgId AND b.USER_GROUP_ID=:id)
+
+external_user:
+  count: |
+    SELECT COUNT(*) AS total
+    FROM USER_INFO_WB AS external_user
+    INNER JOIN USER_GROUP AS user_group ON user_group.ID = external_user.GROUP_ID
+    WHERE user_group.ORG_ID = :orgId
+      AND (
+      :keyword IS NULL
+      OR external_user.REAL_NAME LIKE CONCAT('%', :keyword, '%')
+      OR external_user.ACCOUNT LIKE CONCAT('%', :keyword, '%')
+    )
+      AND (:groupId IS NULL OR external_user.GROUP_ID = :groupId)
+      AND (:enabled IS NULL OR external_user.ENABLED = :enabled)
+
+  list: |
+    SELECT
+      external_user.ID AS id,
+      external_user.GROUP_ID AS groupId,
+      user_group.GROUP_NAME AS groupName,
+      user_group.AGENT_ID AS agentId,
+      (SELECT GROUP_CONCAT(agent.AGENT_NAME ORDER BY FIND_IN_SET(CAST(agent.ID AS CHAR), user_group.AGENT_ID) SEPARATOR '、')
+        FROM AI_AGENT agent WHERE agent.ORG_ID = user_group.ORG_ID
+        AND FIND_IN_SET(CAST(agent.ID AS CHAR), user_group.AGENT_ID) > 0) AS agentName,
+      external_user.REAL_NAME AS realName,
+      external_user.ACCOUNT AS account,
+      external_user.PHONE AS phone,
+      external_user.REMARKS AS remarks,
+      external_user.ENABLED AS enabled,
+      external_user.CREATE_TIME AS createTime,
+      external_user.UPDATE_TIME AS updateTime
+    FROM USER_INFO_WB AS external_user
+    INNER JOIN USER_GROUP AS user_group ON user_group.ID = external_user.GROUP_ID
+    WHERE user_group.ORG_ID = :orgId
+      AND (
+      :keyword IS NULL
+      OR external_user.REAL_NAME LIKE CONCAT('%', :keyword, '%')
+      OR external_user.ACCOUNT LIKE CONCAT('%', :keyword, '%')
+    )
+      AND (:groupId IS NULL OR external_user.GROUP_ID = :groupId)
+      AND (:enabled IS NULL OR external_user.ENABLED = :enabled)
+    ORDER BY COALESCE(external_user.UPDATE_TIME, external_user.CREATE_TIME) DESC, external_user.ID DESC
+    LIMIT :limit OFFSET :offset
+
+  find_active_group: |
+    SELECT ID AS id
+    FROM USER_GROUP
+    WHERE ID = :groupId AND ORG_ID = :orgId AND ENABLED = 1
+    LIMIT 1
+
+  find_by_id: |
+    SELECT external_user.ID AS id, external_user.GROUP_ID AS groupId, external_user.REAL_NAME AS realName,
+           external_user.ACCOUNT AS account, external_user.PASSWORD AS password, external_user.ENABLED AS enabled
+    FROM USER_INFO_WB AS external_user
+    INNER JOIN USER_GROUP AS user_group ON user_group.ID = external_user.GROUP_ID
+    WHERE external_user.ID = :id AND user_group.ORG_ID = :orgId
+    LIMIT 1
+
+  find_ids: |
+    SELECT external_user.ID AS id
+    FROM USER_INFO_WB AS external_user
+    INNER JOIN USER_GROUP AS user_group ON user_group.ID = external_user.GROUP_ID
+    WHERE FIND_IN_SET(external_user.ID, :ids) > 0 AND user_group.ORG_ID = :orgId
+    ORDER BY external_user.ID ASC
+
+  find_internal_account: |
+    SELECT ID AS id
+    FROM USER_INFO
+    WHERE ACCOUNT = :account AND REMOVED = 0
+    LIMIT 1
+
+  find_external_account: |
+    SELECT ID AS id
+    FROM USER_INFO_WB
+    WHERE ACCOUNT = :account AND ID <> :excludeId
+    LIMIT 1
+
+  insert: |
+    INSERT INTO USER_INFO_WB (
+      GROUP_ID, REAL_NAME, ACCOUNT, PASSWORD, PHONE, REMARKS, ENABLED,
+      CREATE_USER_ID, CREATE_USER_NAME, CREATE_TIME
+    ) VALUES (
+      :groupId, :realName, :account, :password, :phone, :remarks, :enabled,
+      :createUserId, :createUserName, :createTime
+    )
+
+  update: |
+    UPDATE USER_INFO_WB
+    SET GROUP_ID = :groupId,
+        REAL_NAME = :realName,
+        ACCOUNT = :account,
+        PHONE = :phone,
+        REMARKS = :remarks,
+        ENABLED = :enabled,
+        UPDATE_USER_ID = :updateUserId,
+        UPDATE_USER_NAME = :updateUserName,
+        UPDATE_TIME = :updateTime
+    WHERE ID = :id
+      AND EXISTS (SELECT 1 FROM USER_GROUP WHERE USER_GROUP.ID = USER_INFO_WB.GROUP_ID AND USER_GROUP.ORG_ID = :orgId)
+
+  reset_password: |
+    UPDATE USER_INFO_WB
+    SET PASSWORD = :password,
+        UPDATE_USER_ID = :updateUserId,
+        UPDATE_USER_NAME = :updateUserName,
+        UPDATE_TIME = :updateTime
+    WHERE ID = :id
+      AND EXISTS (SELECT 1 FROM USER_GROUP WHERE USER_GROUP.ID = USER_INFO_WB.GROUP_ID AND USER_GROUP.ORG_ID = :orgId)
+
+  delete_shares: |
+    DELETE FROM SKILL_SHARE
+    WHERE ORG_ID = :orgId AND (SOURCE_USER_ID = :id OR TARGET_USER_ID = :id)
+
+  delete_libraries: |
+    DELETE FROM SKILL_LIBRARY
+    WHERE ORG_ID = :orgId AND PUBLISHER_USER_ID = :id
+
+  delete_private_skills: |
+    DELETE FROM SKILL
+    WHERE ORG_ID = :orgId AND USER_ID = :id AND SKILL_TYPE = 3
+
+  physical_delete: |
+    DELETE FROM USER_INFO_WB
+    WHERE ID = :id
+      AND EXISTS (SELECT 1 FROM USER_GROUP WHERE USER_GROUP.ID = USER_INFO_WB.GROUP_ID AND USER_GROUP.ORG_ID = :orgId)
