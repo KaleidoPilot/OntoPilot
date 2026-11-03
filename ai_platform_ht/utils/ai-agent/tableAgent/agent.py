@@ -147,7 +147,7 @@ def resolve_kernel_id(url: str, token: str = "") -> str:
         3. 若没有可复用的 python3 内核 → POST {url}/api/kernels 创建 {"name": "python3"}，
            并等待内核就绪(idle)后再返回其 id。
 
-    :param url: 沙箱基础地址，例如 http://172.16.100.223:7080
+    :param url: 沙箱基础地址，例如 http://127.0.0.1:7080
     :param token: 访问沙箱的 token，可选
     :return: 可用的 kernel_id
     :raises RuntimeError: 查询或创建内核失败时抛出
